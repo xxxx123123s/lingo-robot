@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>从头看懂这套语音桌宠</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg2:#f7f7f5; --bg3:#f1efea;
+    --fg:#1f1e1c; --fg2:#5f5e5a; --fg3:#8a8880;
+    --line:#e3e0d8;
+    --blue:#185fa5; --blue-bg:#e6f1fb; --blue-line:#b5d4f4;
+    --teal:#0f6e56; --teal-bg:#e1f5ee; --teal-line:#9fe1cb;
+    --amber:#854f0b; --amber-bg:#faeeda; --amber-line:#fac775;
+    --red:#a32d2d; --red-bg:#fcebeb; --red-line:#f7c1c1;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:56px 28px 120px}
+  header{margin-bottom:44px}
+  h1{font-size:28px; font-weight:600; margin:0 0 14px; letter-spacing:-.3px}
+  .sub{color:var(--fg2); font-size:16px; margin:0}
+  h2{font-size:21px; font-weight:600; margin:56px 0 8px; padding-top:8px; letter-spacing:-.2px}
+  h2 .num{color:var(--fg3); font-weight:400; margin-right:10px}
+  h3{font-size:16px; font-weight:600; margin:32px 0 8px}
+  h4{font-size:14px; font-weight:600; margin:20px 0 6px; color:var(--fg)}
+  p{margin:10px 0}
+  .lead{color:var(--fg2)}
+  code{font-family:var(--mono); font-size:13px; background:var(--bg3); padding:1px 5px; border-radius:4px}
+  pre{
+    font-family:var(--mono); font-size:12.5px; line-height:1.65;
+    background:var(--bg2); border:1px solid var(--line); border-radius:8px;
+    padding:14px 16px; overflow-x:auto; margin:12px 0;
+  }
+  pre code{background:none; padding:0; font-size:inherit}
+  .cmt{color:var(--fg3)}
+  .kw{color:var(--blue)}
+  .str{color:var(--teal)}
+  table{width:100%; border-collapse:collapse; margin:16px 0; font-size:13.5px}
+  th{text-align:left; font-weight:600; padding:9px 12px; background:var(--bg3); border-bottom:1px solid var(--line); white-space:nowrap}
+  td{padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  td code{font-size:12.5px}
+  .tbl-scroll{overflow-x:auto}
+  blockquote{
+    margin:18px 0; padding:2px 0 2px 16px; border-left:3px solid var(--blue-line);
+    color:var(--fg2); background:linear-gradient(90deg,var(--blue-bg),transparent 85%);
+    border-radius:0 6px 6px 0;
+  }
+  blockquote p{margin:8px 0}
+  .step{
+    border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin:20px 0;
+    background:var(--bg);
+  }
+  .step-h{display:flex; align-items:baseline; gap:12px; margin-bottom:6px}
+  .step-n{
+    flex:0 0 auto; width:26px; height:26px; border-radius:50%;
+    background:var(--blue); color:#fff; font-size:13px; font-weight:600;
+    display:flex; align-items:center; justify-content:center; position:relative; top:2px;
+  }
+  .step-t{font-size:16px; font-weight:600}
+  .step-loc{font-family:var(--mono); font-size:12px; color:var(--fg3); margin-left:auto}
+  .io{display:grid; grid-template-columns:64px 1fr; gap:4px 14px; font-size:13.5px; margin:14px 0 0}
+  .io-k{color:var(--fg3); font-size:12.5px}
+  .io-v{color:var(--fg)}
+  .data{
+    background:var(--teal-bg); border:1px solid var(--teal-line); border-radius:8px;
+    padding:12px 16px; font-family:var(--mono); font-size:12.5px; color:#04342c;
+    overflow-x:auto; margin:10px 0;
+  }
+  .data .dim{color:#3d7d69}
+  .warn{
+    background:var(--amber-bg); border:1px solid var(--amber-line); border-radius:8px;
+    padding:12px 16px; font-size:13.5px; color:#412402; margin:14px 0;
+  }
+  .bad{
+    background:var(--red-bg); border:1px solid var(--red-line); border-radius:8px;
+    padding:12px 16px; font-size:13.5px; color:#501313; margin:14px 0;
+  }
+  .strip{display:flex; flex-wrap:wrap; gap:8px; align-items:stretch; margin:20px 0}
+  .chip{
+    flex:1 1 130px; border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+    background:var(--bg2); min-width:0;
+  }
+  .chip b{display:block; font-size:13px; font-weight:600; margin-bottom:2px}
+  .chip span{display:block; font-size:12px; color:var(--fg2); font-family:var(--mono); word-break:break-all}
+  .chip.act{background:var(--blue-bg); border-color:var(--blue-line)}
+  .toc{border:1px solid var(--line); border-radius:12px; padding:18px 24px; margin:32px 0; background:var(--bg2)}
+  .toc p{margin:0 0 10px; font-size:13px; font-weight:600; color:var(--fg2); letter-spacing:.5px}
+  .toc ol{margin:0; padding-left:20px; columns:2; column-gap:32px; font-size:14px}
+  .toc li{margin:3px 0; break-inside:avoid}
+  .toc a{color:var(--fg); text-decoration:none; border-bottom:1px solid transparent}
+  .toc a:hover{border-bottom-color:var(--fg3)}
+  hr{border:none; border-top:1px solid var(--line); margin:48px 0}
+  .gloss td:first-child{font-family:var(--mono); font-size:12.5px; white-space:nowrap; font-weight:600}
+  .filecard{border-left:3px solid var(--teal-line); padding-left:18px; margin:28px 0}
+  .filecard .fn{font-family:var(--mono); font-size:15px; font-weight:600}
+  .filecard .fn em{font-style:normal; color:var(--fg3); font-size:12.5px; font-weight:400; margin-left:8px}
+  @media (max-width:620px){
+    .wrap{padding:32px 18px 80px}
+    h1{font-size:23px}
+    .toc ol{columns:1}
+    .step-loc{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>从头看懂这套语音桌宠</h1>
+  <p class="sub">不谈架构，只跟着一段声音走：它从麦克风出来时是什么样，到耳机里又变回了什么样。</p>
+</header>
+
+<div class="strip">
+  <div class="chip"><b>空气振动</b><span>你说"你好"</span></div>
+  <div class="chip act"><b>一串整数</b><span>12800 个 int16</span></div>
+  <div class="chip act"><b>一串小数</b><span>12800 个 float32</span></div>
+  <div class="chip"><b>一句话</b><span>"你好" (str)</span></div>
+  <div class="chip"><b>一串整数</b><span>WAV 文件字节</span></div>
+  <div class="chip"><b>空气振动</b><span>耳机里出声</span></div>
+</div>
+
+<p class="lead">整件事最反直觉的地方是：<strong>计算机不知道什么是"声音"</strong>。它只知道数字。所以这套程序干的活，全是在搬运和翻译数字——一共三次翻译：振动→数字、数字→文字、文字→数字。</p>
+
+<div class="toc">
+  <p>目录</p>
+  <ol>
+    <li><a href="#t1">数据变形的总表</a></li>
+    <li><a href="#t2">英语名词小词典</a></li>
+    <li><a href="#t3">一步一步走一遍</a></li>
+    <li><a href="#t4">逐个文件解剖</a></li>
+    <li><a href="#t5">一次完整的数值演示</a></li>
+    <li><a href="#t6">三个奇怪的设计为什么存在</a></li>
+    <li><a href="#t7">命令怎么串起来</a></li>
+    <li><a href="#t8">ASR 到底怎么认字</a></li>
+  </ol>
+</div>
+
+<h2 id="t1"><span class="num">01</span>数据变形的总表</h2>
+
+<p class="lead">下面这张表是整篇文章的骨架。左边是阶段，中间是"数据此刻长什么样"，右边是这段代码写在哪个文件的第几行。看懂了这张表，剩下的都只是细节。</p>
+
+<div class="tbl-scroll">
+<table>
+<thead>
+<tr><th>#</th><th>发生了什么</th><th>数据此刻是什么</th><th>体积感觉</th><th>代码位置</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>声卡把振动采样成数字</td><td><code>bytes</code>，二进制，2 字节一个点</td><td>1 秒 = 32 KB</td><td>talk.py 187</td></tr>
+<tr><td>2</td><td>二进制解成整数</td><td><code>numpy int16</code> 数组，每个值 −32768 到 32767</td><td>1600 个 / 块</td><td>talk.py 190</td></tr>
+<tr><td>3</td><td>归一化成小数</td><td><code>float32</code> 数组，每个值 −1.0 到 1.0</td><td>同上</td><td>talk.py 190</td></tr>
+<tr><td>4</td><td>判断这段有没有人声</td><td>一个布尔值 <code>True / False</code></td><td>1 个字节不到</td><td>talk.py 210</td></tr>
+<tr><td>5</td><td>攒成一句话</td><td>一个更长的 <code>float32</code> 数组，1～5 秒</td><td>16000～80000 个</td><td>talk.py 214</td></tr>
+<tr><td>6</td><td>识别成文字</td><td><code>str</code>，比如 <code>"你好小派"</code></td><td>4～20 个字</td><td>talk.py 133</td></tr>
+<tr><td>7</td><td>大模型回答</td><td>另一个 <code>str</code></td><td>不超过 40 字</td><td>chat.py 72</td></tr>
+<tr><td>8</td><td>合成成语音</td><td><code>bytes</code>，一个完整 WAV 文件</td><td>约 40～200 KB</td><td>tts.py 50</td></tr>
+<tr><td>9</td><td>播放</td><td>又变回振动</td><td>—</td><td>tts.py 61</td></tr>
+</tbody>
+</table>
+</div>
+
+<blockquote>
+<p><strong>注意第 4 行到第 5 行的跳跃。</strong>前面所有步骤都是"处理数字"，一直到第 6 步才第一次出现"文字"。也就是说，识别模型是这套系统里唯一懂语言的东西（除了大模型）。</p>
+</blockquote>
+
+<h2 id="t2"><span class="num">02</span>英语名词小词典</h2>
+
+<p class="lead">这些词你在代码和报错里会反复撞见。我给每个词都写清楚"它在这个项目里具体指哪一行代码"，比字典定义有用。</p>
+
+<div class="tbl-scroll">
+<table class="gloss">
+<thead>
+<tr><th>英文</th><th>字面意思</th><th>在这个项目里具体是什么</th></tr>
+</thead>
+<tbody>
+<tr><td>sample</td><td>采样点</td><td>声音的一个瞬间。1 秒采 16000 个点，所以代码里到处都是 <code>16000</code> 和 <code>1600</code>。</td></tr>
+<tr><td>sample rate</td><td>采样率</td><td>每秒采多少个点。<code>RATE = 16000</code>，语音识别模型的硬性要求，不能改。</td></tr>
+<tr><td>PCM / raw</td><td>原始波形数据</td><td>没有任何文件头，纯粹的数字流。<code>arecord -t raw</code> 就是输出这个。</td></tr>
+<tr><td>int16</td><td>16 位整数</td><td>每个采样点用 2 字节存，范围 −32768～32767。<code>S16_LE</code> 里的 S16 就是这个意思。</td></tr>
+<tr><td>chunk</td><td>一块</td><td>一次读多少。<code>CHUNK = 1600</code> = 0.1 秒。程序是"一块一块"处理声音的，不是一次性。</td></tr>
+<tr><td>buffer</td><td>缓冲区</td><td>声卡和应用之间的中转箱。<code>--buffer-size=16000</code> 就是 1 秒的容量。</td></tr>
+<tr><td>VAD</td><td>Voice Activity Detection<br>人声活动检测</td><td>判断"这一小块里有没有人在说话"。它<strong>不识别内容</strong>，只回答是/否。模型文件 1.8 MB。</td></tr>
+<tr><td>ASR</td><td>Automatic Speech Recognition<br>自动语音识别</td><td>把声音变成文字。这里用 sherpa-onnx。Vosk 也是 ASR，但太慢被换掉了。</td></tr>
+<tr><td>TTS</td><td>Text To Speech<br>文字转语音</td><td>把文字变成声音。这里有三个后端：sapi / edge / espeak。</td></tr>
+<tr><td>SAPI</td><td>Speech API</td><td>Windows 自带的语音接口。你电脑里本来就装了中文女声，不用联网、不用密钥。</td></tr>
+<tr><td>RTF</td><td>Real Time Factor<br>实时率</td><td>处理 1 秒音频需要几秒。<strong>小于 1 才能用</strong>。Vosk 是 1.98（说完要等两倍时间），sherpa 是 0.18（快 5 倍多）。</td></tr>
+<tr><td>preroll</td><td>预先滚动</td><td>录音时总是"先说后录"，VAD 反应过来时第一个字已经过去了。preroll 就是把之前 0.35 秒也补上。见 talk.py 195 行。</td></tr>
+<tr><td>hotword</td><td>热词</td><td>你希望它优先认对的词。你的人名"许鑫"就在 <code>hotwords.txt</code> 里。</td></tr>
+<tr><td>carry</td><td>余数 / 结转</td><td>VAD 每次只吃 512 个点，但一次读到 1600 个。1600 除不尽 512，剩 64 个要留到下一次。见 talk.py 200 行。</td></tr>
+<tr><td>stream</td><td>流</td><td>识别引擎的工作台。一次识别要新建一个 stream，喂数据，拿结果。见 talk.py 134 行。</td></tr>
+<tr><td>endpoint</td><td>端点</td><td>一句话的结束位置。旧版本靠它断句，现在改用 VAD 了。</td></tr>
+<tr><td>normalize</td><td>归一化</td><td>把 −32768～32767 的整数除 32768，变成 −1.0～1.0 的小数。模型只吃这种格式。</td></tr>
+<tr><td>LLM</td><td>Large Language Model<br>大语言模型</td><td>这里的 DeepSeek。</td></tr>
+<tr><td>token</td><td>词元</td><td>模型计费单位。<code>max_tokens: 150</code> = 最多回 150 个词元，防止它长篇大论。</td></tr>
+<tr><td>system prompt</td><td>系统提示词</td><td>给大模型定人格的那段话，规定它是"小派"、不超过 40 字、不许用表情符号。</td></tr>
+<tr><td>plughw:3,0</td><td>设备名</td><td><code>3</code> 是声卡编号（USB 麦克风），<code>0</code> 是这块卡上的第几个设备。<code>plughw:2,0</code> 是板载 3.5mm 口。</td></tr>
+<tr><td>asym</td><td>asymmetric<br>不对称</td><td>ALSA 的一种虚拟设备：播放走一个声卡，录音走另一个。<code>.asoundrc</code> 里就这么配的。</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="t3"><span class="num">03</span>一步一步走一遍</h2>
+
+<p class="lead">从现在开始，假设你对着麦克风说了一句<strong>"你好小派"</strong>，时长约 0.8 秒。跟着它走。下面的行号都是 <code>/home/pi/talk.py</code> 的真实行号。</p>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">1</div>
+    <div class="step-t">打开麦克风，让它一直往外吐数据</div>
+    <div class="step-loc">talk.py 174–177</div>
+  </div>
+  <p>程序不"录一段停下来"，而是启动一个叫 <code>arecord</code> 的系统程序，让它像个水龙头一样不停往外流。</p>
+<pre><code>cmd = [<span class="str">"arecord"</span>, <span class="str">"-D"</span>, args.device, <span class="str">"-f"</span>, <span class="str">"S16_LE"</span>, <span class="str">"-r"</span>, <span class="str">"16000"</span>,
+       <span class="str">"-c"</span>, <span class="str">"1"</span>, <span class="str">"-t"</span>, <span class="str">"raw"</span>, <span class="str">"-q"</span>,
+       <span class="str">"--period-size=1600"</span>, <span class="str">"--buffer-size=16000"</span>]
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=0)</code></pre>
+  <div class="io">
+    <div class="io-k">参数含义</div>
+    <div class="io-v"><code>-f S16_LE</code> 每个点 2 字节小端序 · <code>-r 16000</code> 每秒 16000 点 · <code>-c 1</code> 单声道 · <code>-t raw</code> 不要文件头</div>
+    <div class="io-k">输出</div>
+    <div class="io-v">一个管道 <code>fd</code>，可以从里面读字节</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">2</div>
+    <div class="step-t">每次抓 0.1 秒的字节</div>
+    <div class="step-loc">talk.py 187</div>
+  </div>
+<pre><code>d = os.read(fd, CHUNK * 2)   <span class="cmt"># CHUNK=1600，乘 2 是因为一个点 2 字节</span></code></pre>
+  <p>这次读到的是 3200 个字节。它们在内存里长这样（十六进制，前 8 个）：</p>
+  <div class="data">03 00 f5 ff 1a 00 b2 ff <span class="dim">…… 共 3200 字节</span></div>
+  <p>单看这堆东西，你完全不知道它是声音还是图片。<strong>只有"约定"才让它成为声音</strong>——约定的内容就是：每 2 字节算一个数，每秒 16000 个。</p>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">3</div>
+    <div class="step-t">字节 → 整数 → 小数（两次变形，一行代码）</div>
+    <div class="step-loc">talk.py 190</div>
+  </div>
+<pre><code>samples = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0</code></pre>
+  <p>这一行干了三件事，从左往右读：</p>
+  <div class="tbl-scroll">
+  <table>
+  <tr><td style="width:26%"><code>frombuffer(data, int16)</code></td><td>把那 3200 个字节按"每 2 字节一个整数"读出来</td><td><code>[3, -11, 26, -78, ...]</code></td></tr>
+  <tr><td><code>astype(float32)</code></td><td>整数转成浮点，为下一步除法做准备</td><td><code>[3.0, -11.0, 26.0, -78.0, ...]</code></td></tr>
+  <tr><td><code>/ 32768.0</code></td><td>全部除以 32768，压到 −1～1 之间</td><td><code>[0.0001, -0.0003, 0.0008, -0.0024, ...]</code></td></tr>
+  </table>
+  </div>
+  <div class="warn">
+    <strong>为什么要除 32768？</strong>识别模型和 VAD 模型都是在"−1 到 1 的浮点数"上训练的。你直接喂 3 万这种大整数，它只会输出乱码。这一步没有捷径，是硬规定。
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">4</div>
+    <div class="step-t">把 1600 个点"零敲碎打"喂给 VAD</div>
+    <div class="step-loc">talk.py 200–203</div>
+  </div>
+  <p>这里有个很隐蔽的坑。你每次拿到 1600 个点，但 VAD 每次只肯吃 512 个。<code>1600 = 512 × 3 + 64</code>，除不尽，会剩 64 个。</p>
+<pre><code>carry = np.concatenate([carry, samples]) if len(carry) else samples
+<span class="kw">while</span> len(carry) &gt;= window:
+    vad.accept_waveform(carry[:window])
+    carry = carry[window:]</code></pre>
+  <div class="data">
+第 1 次读入 1600 个 → 喂 512×3，剩 <span class="dim">carry = 64 个</span><br>
+第 2 次读入 1600 个 → carry 变 1664 → 喂 512×3，剩 <span class="dim">carry = 128 个</span><br>
+第 3 次读入 1600 个 → carry 变 1728 → 喂 512×3，剩 <span class="dim">carry = 192 个</span><br>
+<span class="dim">……这样一直滚下去，一个点都不丢</span>
+  </div>
+  <div class="bad">
+    <strong>如果不写 carry 会怎样？</strong>每块都丢那 64 个点。1600 里丢 64 = <strong>丢掉 4% 的音频</strong>。听起来不多，但丢的是连续的小碎片，识别结果就会时不时错一个字——而且你根本查不出原因。这一行是踩过坑之后补的。
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">5</div>
+    <div class="step-t">VAD 回答一个问题：现在有人说话吗？</div>
+    <div class="step-loc">talk.py 210</div>
+  </div>
+<pre><code><span class="kw">if</span> buf <span class="kw">is</span> <span class="kw">None</span> <span class="kw">and</span> vad.is_speech_detected():
+    buf = hist.copy()
+    just_started = <span class="kw">True</span></code></pre>
+  <p><code>vad.is_speech_detected()</code> 只返回 <code>True</code> 或 <code>False</code>。没说话的时候它一直返回 False，这一块数据就<strong>直接扔了</strong>——不识别、不打印、不理会。</p>
+  <p>这正是当初治好"乱出字"的关键。以前没有 VAD，风扇声、敲键盘声都被送去识别，模型硬凑出"嗯""那个"这种字。</p>
+  <div class="io">
+    <div class="io-k">buf</div>
+    <div class="io-v">装"当前这句话"的容器。之前是 <code>None</code>（空的），现在被赋上了一段真实数据，从此开始累积。</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">6</div>
+    <div class="step-t">补上说话前的 0.35 秒</div>
+    <div class="step-loc">talk.py 195、205–207、211</div>
+  </div>
+  <p>VAD 从"检测到人声"到"真正反应过来"之间有延迟。等你确认有人说话，第一个"你"字已经过去了。所以程序一直在偷偷保存"最近 0.35 秒"，一旦人声出现，就把这段历史也塞进去。</p>
+<pre><code>preroll = int(0.35 * RATE)        <span class="cmt"># = 5600 个点</span>
+<span class="cmt"># 每块都往 hist 里追加，并只保留最近 5600 个</span>
+hist = np.concatenate([hist, samples])
+<span class="kw">if</span> len(hist) &gt; preroll:
+    hist = hist[-preroll:]
+<span class="cmt"># 人声出现的那一刻：</span>
+buf = hist.copy()                 <span class="cmt"># 历史 5600 个 + 从现在开始累积</span></code></pre>
+  <div class="data">
+buf 的组成：<br>
+<span class="dim">[ 之前的 0.35 秒静音/气声 ][ 第 1 块 ][ 第 2 块 ][ 第 3 块 ]……</span><br>
+<span class="dim">  ↑ 这份才让"你"字没被切掉</span>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">7</div>
+    <div class="step-t">VAD 说"这句说完了"，交出一整段</div>
+    <div class="step-loc">talk.py 216–224</div>
+  </div>
+<pre><code><span class="kw">if</span> <span class="kw">not</span> vad.empty():
+    seg = buf <span class="kw">if</span> buf <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span> <span class="kw">else</span> vad.front.samples
+    <span class="kw">if</span> speech_seconds(seg) &gt;= 0.3:      <span class="cmt"># 太短的多半是杂音</span>
+        handle(recognize(seg), seg)
+    buf = <span class="kw">None</span>                          <span class="cmt"># 清空，准备下一句</span></code></pre>
+  <p>停顿 0.5 秒后 VAD 认为说完了。<code>seg</code> 现在是一个约 12800 个 <code>float32</code> 的数组，也就是你要识别的整句话。</p>
+  <div class="warn">
+    <strong>那个 <code>speech_seconds(seg) &gt;= 0.3</code> 是干嘛的？</strong>它算这段里"真正有声音"的秒数。之前有一次你说"帮我打开台灯"，录音峰值只有 −22 dBFS、实际发声 0.3 秒不到，识别结果完全跑偏。加上这道门槛后，这种"说得太轻"的片段会被直接丢掉，不会给你一个莫名其妙的回答。
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">8</div>
+    <div class="step-t">数字 → 文字</div>
+    <div class="step-loc">talk.py 133–139</div>
+  </div>
+<pre><code><span class="kw">def</span> recognize(samples):
+    s = rec.create_stream()              <span class="cmt"># 新建一个识别工作台</span>
+    s.accept_waveform(RATE, samples)     <span class="cmt"># 把整段音频喂进去</span>
+    s.input_finished()                   <span class="cmt"># 告诉它：音频给完了</span>
+    <span class="kw">while</span> rec.is_ready(s):
+        rec.decode_stream(s)             <span class="cmt"># 反复解码直到解不动</span>
+    <span class="kw">return</span> rec.get_result(s).strip()     <span class="cmt"># 取出文字</span></code></pre>
+  <div class="data">
+输入：array([0.0001, -0.0003, ..., 0.012], dtype=float32)  <span class="dim">12800 个</span><br>
+输出：<span class="str">"你好小派"</span>  <span class="dim">str，4 个字符</span>
+  </div>
+  <p>注意 <code>input_finished()</code> 是写在 <code>s</code> 上的（stream），不是写在 <code>rec</code> 上的（recognizer）。这里当初写错过一次，报错找了很久。</p>
+  <p>这一步耗时约 0.7 秒。之所以能这么快，是因为模型只有 14 MB——用的是 <code>streaming-zipformer-zh-14M</code>，那个 "-14M" 就是参数量级别。</p>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">9</div>
+    <div class="step-t">文字 → 文字（这一步只在 chat.py 里有）</div>
+    <div class="step-loc">chat.py 72–89</div>
+  </div>
+  <p><code>talk.py</code> 到第 8 步就结束了——它拿到文字直接念出来，所以叫"复读机"。<code>chat.py</code> 在中间插了一步：把文字发给 DeepSeek。</p>
+<pre><code>body = {
+    <span class="str">"model"</span>: cfg[<span class="str">"model"</span>],
+    <span class="str">"messages"</span>: [{<span class="str">"role"</span>: <span class="str">"system"</span>, <span class="str">"content"</span>: cfg[<span class="str">"system"</span>]}] + history,
+    <span class="str">"temperature"</span>: 0.9,
+    <span class="str">"max_tokens"</span>: 150,
+    <span class="str">"stream"</span>: <span class="kw">False</span>,
+}</code></pre>
+  <p>发给 DeepSeek 的其实是一个<strong>完整对话清单</strong>：第一行是人格设定，后面是你俩之前说过的 12 条消息（6 轮）。这就是它"能记住上下文"的全部秘密——每次请求都把历史重发一遍，模型本身不记得任何东西。</p>
+  <div class="data">
+messages = [<br>
+&nbsp;&nbsp;{<span class="str">"role"</span>:<span class="str">"system"</span>, &nbsp;&nbsp;<span class="str">"content"</span>:<span class="str">"你是一只住在树莓派里的小桌宠……"</span>},<br>
+&nbsp;&nbsp;{<span class="str">"role"</span>:<span class="str">"user"</span>, &nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"content"</span>:<span class="str">"你好小派"</span>},<br>
+&nbsp;&nbsp;{<span class="str">"role"</span>:<span class="str">"assistant"</span>, <span class="str">"content"</span>:<span class="str">"哎，我在呢！"</span>},<br>
+&nbsp;&nbsp;{<span class="str">"role"</span>:<span class="str">"user"</span>, &nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"content"</span>:<span class="str">"今天几号"</span>}<br>
+]
+  </div>
+  <p>返回约 0.2 秒，得到一句新文字，比如 <code>"我哪知道呀，我又没有日历。"</code></p>
+  <p><strong>但它回来的不是纯字符串，是三层壳。</strong>真实结构大概是这样：</p>
+<pre><code>{
+  <span class="str">"id"</span>: <span class="str">"chatcmpl-8f2a..."</span>,
+  <span class="str">"model"</span>: <span class="str">"deepseek-chat"</span>,
+  <span class="str">"choices"</span>: [
+    { <span class="str">"index"</span>: 0,
+      <span class="str">"message"</span>: { <span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: <span class="str">"哎，我在呢！有啥事？"</span> },
+      <span class="str">"finish_reason"</span>: <span class="str">"stop"</span> }
+  ],
+  <span class="str">"usage"</span>: { <span class="str">"prompt_tokens"</span>: 156, <span class="str">"completion_tokens"</span>: 12, <span class="str">"total_tokens"</span>: 168 }
+}</code></pre>
+  <p>所以要剥三层才拿到那句话，对应 <code>chat.py:88-89</code>：</p>
+<pre><code>raw  = r.read()                                    <span class="cmt"># 1. bytes  原始字节</span>
+text = raw.decode(<span class="str">"utf-8"</span>)                         <span class="cmt"># 2. str    JSON 文本</span>
+data = json.loads(text)                            <span class="cmt"># 3. dict   Python 字典</span>
+answer = data[<span class="str">"choices"</span>][0][<span class="str">"message"</span>][<span class="str">"content"</span>]  <span class="cmt"># 4. str    真正那句话</span></code></pre>
+  <div class="tbl-scroll">
+  <table>
+  <tr><th>字段</th><th>用途</th></tr>
+  <tr><td><code>usage.total_tokens</code></td><td>计费依据，你花的钱按这个算</td></tr>
+  <tr><td><code>finish_reason: "stop"</code></td><td>正常说完了</td></tr>
+  <tr><td><code>finish_reason: "length"</code></td><td><strong>被 <code>max_tokens</code> 掐断了，回答是半句</strong>。这时念出来像突然卡住，把 <code>llm.json</code> 的 <code>max_tokens</code> 调大即可</td></tr>
+  <tr><td><code>choices</code> 为什么是数组</td><td>理论上可以一次要好几个候选（<code>n</code> 参数），默认只给 1 个，所以永远取 <code>[0]</code></td></tr>
+  <tr><td><code>"stream": False</code></td><td>攒齐了一次返回。改成 <code>True</code> 会变成一行行 <code>data: {...}</code> 碎片，响应更快但要边收边拼</td></tr>
+  </table>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-h">
+    <div class="step-n">10</div>
+    <div class="step-t">文字 → 数字 → 声音</div>
+    <div class="step-loc">tts.py 50–61</div>
+  </div>
+  <p>树莓派自己念不好听，所以它把文字<strong>发到你的电脑</strong>上去合成，再把 WAV 取回来自己播。</p>
+<pre><code><span class="kw">def</span> _sapi_wav(text, voice, rate, timeout=15):
+    q = urllib.parse.urlencode({<span class="str">"text"</span>: text, <span class="str">"voice"</span>: voice, <span class="str">"rate"</span>: rate})
+    <span class="kw">with</span> urllib.request.urlopen(<span class="str">f"{SAPI_URL}/tts?{q}"</span>, timeout=timeout) <span class="kw">as</span> r:
+        <span class="kw">return</span> r.read()</code></pre>
+  <p>实际发出去的 HTTP 请求，浏览器里也能打开：</p>
+  <div class="data">GET http://192.168.137.1:8765/tts?text=我哪知道呀&voice=huihui&rate=180</div>
+  <p>电脑那边（<code>pc/tts_server.py</code>）收到后：</p>
+<pre><code>eng = pyttsx3.init()
+eng.setProperty(<span class="str">"voice"</span>, vid)      <span class="cmt"># 选中 Huihui 中文女声</span>
+eng.setProperty(<span class="str">"rate"</span>, rate)     <span class="cmt"># 语速 180</span>
+eng.save_to_file(text, path)       <span class="cmt"># 写成临时 wav</span>
+eng.runAndWait()
+<span class="kw">return</span> open(path, <span class="str">"rb"</span>).read()       <span class="cmt"># 把 wav 的字节原样回传</span></code></pre>
+  <p>树莓派拿到字节，存成 <code>/tmp/tts_sapi.wav</code>，最后一步：</p>
+<pre><code><span class="kw">return</span> subprocess.run([<span class="str">"aplay"</span>, <span class="str">"-D"</span>, out, <span class="str">"-q"</span>, path]).returncode == 0</code></pre>
+  <p><code>aplay</code> 是 <code>arecord</code> 的镜像工具——一个录、一个放。<code>-D plughw:2,0</code> 指定从 3.5mm 耳机口出来。到这里，数字又变回了振动。</p>
+</div>
+
+<h2 id="t4"><span class="num">04</span>逐个文件解剖</h2>
+
+<p class="lead">每个文件我都只回答三个问题：<strong>它接收什么、它吐出什么、谁在调用它</strong>。别的都是次要的。</p>
+
+<div class="filecard">
+  <p class="fn">talk.py <em>复读机，也是全项目的"基础库"</em></p>
+  <p><strong>接收</strong>：麦克风的字节流（或一个 wav 文件）<br>
+  <strong>吐出</strong>：屏幕上的文字 + 耳机里的声音<br>
+  <strong>运行</strong>：<code>python3 talk.py</code></p>
+  <p>这个文件有两个身份，这点最容易搞混：</p>
+  <p>① 直接运行时，它是完整的复读机。<br>
+  ② 被 <code>chat.py</code> 引入时，它只贡献四个函数，自己<strong>不会跑起来</strong>（因为底部有 <code>if __name__ == "__main__"</code> 挡着）：</p>
+  <div class="tbl-scroll">
+  <table>
+  <tr><th>导出的东西</th><th>是什么</th></tr>
+  <tr><td><code>make_rec()</code></td><td>造一个识别引擎（加载 3 个 onnx 文件）</td></tr>
+  <tr><td><code>make_vad()</code></td><td>造一个人声检测器</td></tr>
+  <tr><td><code>speech_seconds()</code></td><td>算"真正有声"的秒数</td></tr>
+  <tr><td><code>MODEL / VAD_MODEL / RATE</code></td><td>三个常量，路径和采样率</td></tr>
+  </table>
+  </div>
+  <p>所以<strong>改识别相关的任何参数（模型、热词、VAD 灵敏度），改 talk.py 一处，两个模式同时生效。</strong></p>
+</div>
+
+<div class="filecard">
+  <p class="fn">chat.py <em>对话版，比 talk.py 多一个大模型</em></p>
+  <p><strong>接收</strong>：同上<br>
+  <strong>吐出</strong>：文字回答 + 语音<br>
+  <strong>运行</strong>：<code>python3 chat.py</code></p>
+  <p>它和 <code>talk.py</code> 的第 1～8 步代码几乎是复制来的（VAD 那套逻辑一模一样），区别在第 9 步：</p>
+<pre><code><span class="kw">from</span> talk <span class="kw">import</span> make_rec, make_vad, speech_seconds, MODEL, VAD_MODEL, RATE</code></pre>
+  <p>识别部分直接 import，但主循环是重写的——因为 <code>talk.py</code> 的主循环写死了"识别完就念"，没法插入大模型。这是当初为了快速验证而复制的，不算优雅但很清楚。</p>
+  <p>文件里唯一值得单独说的是 <code>reply_to()</code>：</p>
+<pre><code><span class="kw">def</span> reply_to(text):
+    history.append({<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: text})
+    <span class="kw">if</span> len(history) &gt; HISTORY_MAX:      <span class="cmt"># 12 条 = 6 轮</span>
+        <span class="kw">del</span> history[:-HISTORY_MAX]        <span class="cmt"># 超了就把最老的扔掉</span>
+    answer = ask_llm(history, cfg)
+    history.append({<span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: answer})</code></pre>
+  <p>这就是"记忆力"的实现：一个普通列表，超长就砍头。<strong>没有数据库，没有向量检索</strong>，就 12 条消息。</p>
+</div>
+
+<div class="filecard">
+  <p class="fn">tts.py <em>单一的语音出口，带三级降级</em></p>
+  <p><strong>接收</strong>：一段文字 <code>str</code> + 目标声卡<br>
+  <strong>吐出</strong>：耳机里的声音（没有返回值）<br>
+  <strong>被谁调用</strong>：talk.py 和 chat.py</p>
+  <p>降级链是它的全部价值：</p>
+  <div class="tbl-scroll">
+  <table>
+  <tr><th>顺序</th><th>引擎</th><th>快不快</th><th>什么时候轮到它</th></tr>
+  <tr><td>1</td><td><code>sapi</code>（PC）</td><td>0.17 秒</td><td>默认。HTTP 失败或返回不足 1000 字节就往下掉</td></tr>
+  <tr><td>2</td><td><code>edge</code>（微软在线）</td><td>1～3 秒</td><td>音质最好，但国内十次成两次。试 2 次</td></tr>
+  <tr><td>3</td><td><code>espeak</code>（本机）</td><td>0.05 秒</td><td>永远能用，永远难听。兜底</td></tr>
+  </table>
+  </div>
+  <p>还有个细节在 <code>clean()</code>：</p>
+<pre><code>text = re.sub(<span class="str">r"[*#`_&gt;\[\]{}()~|]"</span>, <span class="str">" "</span>, text)   <span class="cmt"># 去掉 markdown 符号</span>
+text = re.sub(<span class="str">r"[\U0001F000-\U0001FAFF...]"</span>, <span class="str">""</span>, text)  <span class="cmt"># 去掉表情符号</span></code></pre>
+  <p>因为大模型很爱输出 <code>**重点**</code> 和表情，而这些被念出来就是"星号星号重点星号星号"。这层过滤是必须的。</p>
+</div>
+
+<div class="filecard">
+  <p class="fn">为什么嗓子必须挂在 PC 上 <em>不是设计偏好，是被文件格式和实测数据逼的</em></p>
+  <p>你在 Windows 上听到的那个女声，全部素材就躺在这里，一共 <strong>77 MB</strong>：</p>
+<pre><code>C:\Windows\Speech_OneCore\Engines\TTS\zh-CN\
+  M2052Huihui.apm    6.0M   <span class="cmt"># huihui 这个嗓子的声学素材</span>
+  M2052Hongyu.APM    6.5M   <span class="cmt"># 男声 hongyu</span>
+  M2052Huihui.ini    732B   <span class="cmt"># 参数</span></code></pre>
+  <p><code>.apm</code> 是微软私有格式，Linux 上没有任何引擎读得了。所以<strong>不是不想在树莓派上跑，是这份料搬不走</strong>。能搬的只有替代品，而替代品全试过了：</p>
+  <div class="tbl-scroll">
+  <table>
+  <tr><th>放在哪</th><th>声音从哪来</th><th>实测</th><th>为什么没用</th></tr>
+  <tr><td>树莓派 <code>espeak</code></td><td>内置共振峰算法，没有语音库</td><td>0.05 秒，机械感极强</td><td>"一个字一个字念出来不好听"</td></tr>
+  <tr><td>树莓派 <code>edge-tts</code></td><td>微软在线服务</td><td>1～3 秒，Pi 上 10 次成 2 次</td><td>网络一抖就没声</td></tr>
+  <tr><td>树莓派本地 VITS</td><td>melo-tts 模型，几百 MB</td><td>RTF 17～23，3 秒的话要算 50 秒以上</td><td>慢到没法对话</td></tr>
+  <tr><td><strong>PC SAPI</strong></td><td>系统自带 77 MB 中文语音库</td><td><strong>0.14 秒</strong></td><td><strong>现在用的</strong></td></tr>
+  </table>
+  </div>
+  <p>反过来，树莓派上的东西也搬不过来：21 MB 的 <code>.onnx</code> 识别模型 PC 能跑，但<strong>麦克风插在树莓派上</strong>，声音在那儿出生，所以识别只能留在原地。<strong>谁手上有料，谁干活。</strong></p>
+  <p>另一层原因更实际：树莓派是靠这台 PC 的热点上网的（<code>192.168.137.1</code> 就是 PC），PC 本来就必须开着，把嗓子挂上去是<strong>零新增依赖</strong>。</p>
+</div>
+
+<div class="filecard">
+  <p class="fn">为什么传文字而不是传声音 <em>上下行的账完全不同</em></p>
+  <div class="tbl-scroll">
+  <table>
+  <tr><th>项</th><th>实测</th><th>说明</th></tr>
+  <tr><td>上行请求</td><td>143 字节</td><td>一句中文，URL 转义后的长度</td></tr>
+  <tr><td>下行返回</td><td>152 KB</td><td>WAV，22050 Hz / 16 位 / 单声道</td></tr>
+  <tr><td>往返总耗时</td><td>0.156 秒</td><td>合成占 0.14 秒，网络只占约 0.015 秒</td></tr>
+  </table>
+  </div>
+  <p>反过来的方案（树莓派只当麦克风，识别搬到 PC）每句话要上传 3 秒音频 = <strong>96,000 字节</strong>，回传才 30 字节文字，<strong>差 670 倍</strong>。所以"合成放远端"很便宜，"识别放远端"很贵。</p>
+  <div class="warn"><strong>这套方案唯一的软肋：</strong>PC 必须先开机、<code>启动语音服务.bat</code> 必须先跑起来。漏了这一步，<code>tts.py</code> 会降级到 espeak，你就听到机械音了。</div>
+</div>
+
+<div class="filecard">
+  <p class="fn">tts_server.py <em>跑在你的 Windows 上，不是树莓派</em></p>
+  <p><strong>接收</strong>：HTTP GET，参数 text / voice / rate<br>
+  <strong>吐出</strong>：WAV 字节流（<code>Content-Type: audio/wav</code>）<br>
+  <strong>运行</strong>：双击 <code>启动语音服务.bat</code></p>
+  <p>核心就 12 行 <code>synth()</code>。有个坑必须提：<strong>SAPI 不是线程安全的</strong>，两个人同时请求会崩，所以加了 <code>LOCK</code> 让它们排队。</p>
+<pre><code>LOCK = threading.Lock()      <span class="cmt"># SAPI 不是线程安全的</span>
+<span class="kw">with</span> LOCK:
+    eng = pyttsx3.init()     <span class="cmt"># 每次新建引擎，不复用</span>
+    ...
+    eng.runAndWait()</code></pre>
+  <p><code>runAndWait()</code> 这个名字值得解释：pyttsx3 是异步的，<code>save_to_file</code> 只是"下了个任务"，<code>runAndWait</code> 才是"真的去干活并等它干完"。少了这句，你读到的文件是空的。</p>
+</div>
+
+<div class="filecard">
+  <p class="fn">echo.sh <em>最原始的模式，20 行搞定</em></p>
+  <p><strong>接收</strong>：麦克风<br>
+  <strong>吐出</strong>：耳机（同一份数据，一个字节都不改）<br>
+  <strong>运行</strong>：<code>./echo.sh</code></p>
+<pre><code>arecord -D "$CARD_IN" -f S16_LE -r "$RATE" -c 1 -t raw -q ... \
+| aplay  -D "$CARD_OUT" -f S16_LE -r "$RATE" -c 1 -t raw -q ...</code></pre>
+  <p>那个竖线 <code>|</code> 是管道：<code>arecord</code> 吐出来的字节，直接进 <code>aplay</code> 的嘴。没有 Python、没有模型、没有网络。延迟约 <code>2048 × 1000 / 16000 = 128 ms</code>。</p>
+  <p><strong>这个文件是整个项目的起点</strong>——先证明"声卡这东西是通的"，再往上加识别。反过来做会同时面对五个未知问题。</p>
+</div>
+
+<div class="filecard">
+  <p class="fn">pi_ssh.py <em>我（AI）用来操作你树莓派的工具</em></p>
+  <p><strong>接收</strong>：一条 shell 命令，或一个本地文件路径<br>
+  <strong>吐出</strong>：命令的输出，或把文件写到树莓派上<br>
+  <strong>运行</strong>：<code>python tools/pi_ssh.py put pi_files/talk.py /home/pi/talk.py</code></p>
+  <p>这个文件<strong>你不需要用</strong>，它是我改代码时的手段。用密码登录（<code>pi</code> / <code>123</code>），三种模式：<code>run</code> 跑命令、<code>put</code> 上传、<code>get</code> 下载。</p>
+  <p>上传那里有个绕法值得知道：正常应该用 SFTP，但它一直报 <code>FileNotFoundError</code>。所以改成把文件内容转成 base64 文本，用 shell 命令 <code>printf ... | base64 -d</code> 在远端还原。慢一点，但一次没失败过。</p>
+</div>
+
+<div class="filecard">
+  <p class="fn">miclevel.py / seginfo.py / wav16k.py <em>三个"法医"工具</em></p>
+  <p>它们不参与运行，只在出问题时用。它们的价值在于<strong>把"感觉"变成"数字"</strong>：</p>
+  <div class="tbl-scroll">
+  <table>
+  <tr><th>工具</th><th>回答什么问题</th><th>当初靠它发现了什么</th></tr>
+  <tr><td><code>miclevel.py</code></td><td>我说话到底有多响？</td><td>峰值只有 −22 dBFS，是<strong>说得太轻</strong>，不是程序坏了</td></tr>
+  <tr><td><code>seginfo.py</code></td><td>吞字是录音问题还是模型问题？</td><td>在 0 / 0.2 / 0.35 秒三个点裁剪后重新解码，结果完全一样 → <strong>是模型丢的，preroll 改不动它</strong></td></tr>
+  <tr><td><code>wav16k.py</code></td><td>这个 wav 能用吗？</td><td>把任意采样率转成模型要的 16k 单声道</td></tr>
+  </table>
+  </div>
+</div>
+
+<h2 id="t5"><span class="num">05</span>一次完整的数值演示</h2>
+
+<p class="lead">把上面所有步骤压缩成一条时间线。你说<strong>"你好小派"</strong>，全程约 1.6 秒。</p>
+
+<div class="tbl-scroll">
+<table>
+<thead><tr><th>时刻</th><th>数据形态</th><th>具体内容</th><th>谁干的</th></tr></thead>
+<tbody>
+<tr><td>0.00 s</td><td>振动</td><td>空气压力变化</td><td>你的嘴</td></tr>
+<tr><td>0.00 s</td><td>bytes</td><td><code>03 00 f5 ff 1a 00 ...</code></td><td>USB 声卡</td></tr>
+<tr><td>0.10 s</td><td>int16[1600]</td><td><code>[3, -11, 26, -78, ...]</code></td><td>numpy</td></tr>
+<tr><td>0.10 s</td><td>float32[1600]</td><td><code>[0.0001, -0.0003, 0.0008, ...]</code></td><td>talk.py:190</td></tr>
+<tr><td>0.10 s</td><td>bool</td><td><code>False</code>（还没检测到）</td><td>VAD</td></tr>
+<tr><td>0.15 s</td><td>bool</td><td><code>True</code> → 开始攒</td><td>VAD</td></tr>
+<tr><td>0.15 s</td><td>float32[5600]</td><td>preroll 历史被补进来</td><td>talk.py:211</td></tr>
+<tr><td>0.95 s</td><td>float32[~14400]</td><td>整句话，含 0.35 s 前摇</td><td>talk.py:214</td></tr>
+<tr><td>1.45 s</td><td>bool</td><td>停顿 0.5 s → <code>vad.empty()</code> 为真</td><td>VAD</td></tr>
+<tr><td>1.45 s</td><td>float</td><td><code>speech_seconds() = 0.8</code> ≥ 0.3 通过</td><td>talk.py:218</td></tr>
+<tr><td>2.15 s</td><td>str</td><td><code>"你好小派"</code></td><td>sherpa, +0.7 s</td></tr>
+<tr><td>2.35 s</td><td>str</td><td><code>"哎，我在呢！有啥事？"</code></td><td>DeepSeek, +0.2 s</td></tr>
+<tr><td>2.52 s</td><td>bytes</td><td>WAV，约 48 KB</td><td>PC SAPI, +0.17 s</td></tr>
+<tr><td>2.60 s</td><td>振动</td><td>耳机出声</td><td>aplay</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>从你闭嘴到听见回答，大约 <strong>1.15 秒</strong>。其中识别占 0.7 秒，是最大的一块——这也是当初必须把 Vosk 换掉的原因：Vosk 在这一步要花 2.9 秒。</p>
+
+<h2 id="t6"><span class="num">06</span>三个奇怪的设计为什么存在</h2>
+
+<p class="lead">代码里有三处看起来"多余"的东西。它们全都是踩坑之后补的，删掉就会退回到原来的问题。</p>
+
+<h3>carry：为了不丢那 4%</h3>
+<p>1600 除 512 余 64。不写 carry，每块丢 64 个点，也就是<strong>每 0.1 秒丢 4 毫秒</strong>。这些碎片是连续的，正好落在音节中间时会把字切碎。症状是"识别时不时错一个字，但重说一遍又对了"——极难排查。</p>
+
+<h3>preroll：为了不丢第一个字</h3>
+<p>VAD 需要积累几百毫秒才能确信"有人在说话"。等你确信了，第一个字已经流过去了。所以必须一直留一份 0.35 秒的历史。<strong>但要注意</strong>：preroll 只能救"被切掉"的字，救不了"模型本身认不出"的字。当初"今天"变成"天"就是后者，用 seginfo.py 三个裁剪点一测就分清了。</p>
+
+<h3>speech_seconds 门槛：为了不出洋相</h3>
+<p>有些片段 VAD 认为是人声（确实有点声音），但实际只有 0.2 秒的有效内容。这种片段送进识别，模型会硬凑出一个词，然后大模型一本正经地回答一个你根本没问的问题。加上 <code>≥ 0.3</code> 秒的门槛，这类片段直接丢弃，屏幕上什么都不显示——比瞎答好。</p>
+
+<h2 id="t7"><span class="num">07</span>命令怎么串起来</h2>
+
+<p class="lead">最后是全套东西的启动顺序。漏掉第一步，你会听到 espeak 的机械音而不知道为什么。</p>
+
+<h3>每次使用前</h3>
+<pre><code><span class="cmt"># PC 上，双击（保持窗口开着，关了就不出声了）</span>
+D:\智能桌宠\麦克佛加喇叭\pc\启动语音服务.bat
+
+<span class="cmt"># 确认它活着</span>
+浏览器打开 http://192.168.137.1:8765/ping   <span class="cmt">→ 应显示 ok</span></code></pre>
+
+<h3>然后 ssh 上树莓派</h3>
+<pre><code>ssh pi@192.168.137.160        <span class="cmt"># 密码 123</span>
+
+<span class="cmt"># 模式一：纯复读，验证链路</span>
+python3 talk.py
+
+<span class="cmt"># 模式二：跟大模型聊天</span>
+python3 chat.py
+
+<span class="cmt"># 模式三：只听自己说话（最初的直通）</span>
+./echo.sh
+
+<span class="cmt"># 模式四：不开麦，只测大脑和嗓子</span>
+python3 chat.py --say <span class="str">"你好"</span>
+
+<span class="cmt"># 排查：这句话到底识别成了什么</span>
+python3 talk.py -q --save-dir /tmp/wav</code></pre>
+
+<h3>常用调参</h3>
+<div class="tbl-scroll">
+<table>
+<thead><tr><th>想改什么</th><th>怎么改</th></tr></thead>
+<tbody>
+<tr><td>换音色</td><td><code>python3 chat.py -v kangkang</code>（男声）</td></tr>
+<tr><td>换语速</td><td><code>--rate 200</code> 更快，<code>--rate 150</code> 更慢</td></tr>
+<tr><td>识别太迟钝 / 太灵敏</td><td>改 talk.py:79 的 <code>threshold = 0.5</code>，调低更灵敏</td></tr>
+<tr><td>断句太早 / 太晚</td><td>改 talk.py:80 的 <code>min_silence_duration = 0.5</code></td></tr>
+<tr><td>加自己的名字到热词</td><td>编辑 <code>/home/pi/hotwords.txt</code>，一行一个，字之间空格隔开</td></tr>
+<tr><td>PC 换了 IP</td><td><code>export TTS_SERVER=http://新IP:8765</code></td></tr>
+<tr><td>强制用 espeak（不依赖 PC）</td><td><code>python3 chat.py --tts espeak</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="t8"><span class="num">08</span>ASR 到底怎么认字</h2>
+
+<p class="lead">这一节回答一个最自然的猜想：<strong>是不是有个中文库，每块数据对应一个字，找到就拼成一句话？</strong>库里确实有，但认字的机制和这个猜想差得比较远。</p>
+
+<h3>先把这几步分开，别焊在一起</h3>
+<p>看图时最容易犯的错，是把"换单位""切格""打分"当成同一件事，也容易以为"后面都是对字节处理"。它们发生的时间、地点、执行者全都不同：</p>
+<div class="tbl-scroll">
+<table>
+<tr><th>动作</th><th>在哪</th><th>做了什么</th><th>数量变化</th><th>谁干的</th></tr>
+<tr><td>换能</td><td>麦克风头</td><td>声压 → 微弱电压（毫伏级），纯物理</td><td>—</td><td>电容振膜</td></tr>
+<tr><td>量化</td><td>USB 声卡芯片</td><td>电压 → 字节，每秒量 16000 次，每次 2 字节</td><td>— → 32000 字节/秒</td><td>ADC</td></tr>
+<tr><td>换单位</td><td><code>talk.py:190</code></td><td>int16 整数 → float32 小数，内容一模一样</td><td>12800 → 12800</td><td>你自己的 Python 代码</td></tr>
+<tr><td>切帧</td><td>模型内部</td><td>10 毫秒一帧，每帧算 80 维频谱</td><td>12800 → 6400</td><td>sherpa 的 C++ 特征提取</td></tr>
+<tr><td>切格</td><td>encoder 内部</td><td>4 帧合成 1 格</td><td>80 帧 → 20 格</td><td>encoder 神经网络</td></tr>
+<tr><td>打分</td><td>joiner 内部</td><td>每格对 5539 个符号各打一个分</td><td>20 → 110780 个分数</td><td>joiner 神经网络</td></tr>
+<tr><td>塌缩</td><td>解码器逻辑</td><td>每格只留赢家，空白丢弃，相同的合并</td><td>110780 → 4 个字</td><td>beam search 算法</td></tr>
+</table>
+</div>
+<div class="warn">
+<strong>字节只是运输格式，不是工作格式。</strong>字节只在 <code>os.read()</code> 拿到手、到 <code>np.frombuffer()</code> 解开之间存活几微秒。<code>talk.py:190</code> 执行完，它永久变成 float32 数组，后面再没有任何一行代码见过"字节"。
+</div>
+<div class="warn">
+<strong>别漏掉特征提取这一层。</strong>float32 波形不是直接进 encoder 的。中间隔着 sherpa 的 C++，把波形转成 80 维频谱——这一层不是神经网络，是纯数学（傅里叶变换 + 滤波器组），藏在 <code>accept_waveform()</code> 里面，看不见也改不了。
+</div>
+<h3>为什么"说得太轻"就认不出</h3>
+<p>ADC 是 16 位的，等于把电压切成 <strong>65536 个台阶</strong>。正常音量时你的声音在台阶高处、底噪在低处，两者分得开；说得太轻时，声音和底噪掉进同一个台阶区间，<strong>ADC 在量化那一刻就已经分不开了</strong>——后面再聪明的模型也救不回来。这就是当初 <code>miclevel.py</code> 测出 −22 dBFS 时需要提高音量的根本原因。</p>
+
+<h3>词表的真面目</h3><p>路径 <code>/home/pi/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/tokens.txt</code>，共 <strong>5539 行</strong>，48 KB，格式是"字 + 空格 + 编号"：</p>
+<pre><code>&lt;blk&gt; 0        <span class="cmt">← 空白。最重要的一个符号，下面会讲</span>
+&lt;sos/eos&gt; 1    <span class="cmt">← 句子开始 / 结束</span>
+&lt;unk&gt; 2        <span class="cmt">← 不认识</span>
+怎 3
+么 4
+样 5
+...
+你 69
+好 17
+小 405
+派 907
+许 119
+鑫 3784      <span class="cmt">← 排在三千多位，罕见字</span></code></pre>
+<div class="warn">
+<strong>注意编号不是按拼音也不是按笔画排的。</strong>它是训练时按词频统计出来的顺序：越靠前的字在语料里出现得越多。所以编号本身携带信息——<code>鑫</code> 的 3784 这个位置，就是它老被认错的伏笔。
+</div>
+
+<h3>第一步：波形被扔掉，换成频谱</h3>
+<p>模型根本不吃你那 1600 个采样点。它先把音频重新处理一遍：</p>
+<div class="tbl-scroll">
+<table>
+<tr><th>动作</th><th>具体参数</th><th>结果</th></tr>
+<tr><td>分帧</td><td>窗口 25 毫秒，每帧往前挪 10 毫秒</td><td>1 秒 → 100 帧</td></tr>
+<tr><td>算频谱</td><td>每帧算 80 维滤波器组能量（fbank）</td><td>每帧 80 个数</td></tr>
+<tr><td>合计</td><td>100 × 80</td><td>1 秒音频 → 8000 个数</td></tr>
+</table>
+</div>
+<p>这一步的意义是<strong>丢掉波形、只留频率构成</strong>。人耳分辨"你"和"泥"靠的本来就是频率分布，不是波形的长相。到这一步，你程序里"1600 个点一块"的概念就彻底消失了——分块只影响搬运，不影响识别。你把音频按 0.13 秒切还是 0.07 秒切，结果完全一样。</p>
+
+<h3>第二步：三个网络，各有分工</h3>
+<div class="tbl-scroll">
+<table>
+<tr><th>文件</th><th>大小</th><th>它负责什么</th><th>打个比方</th></tr>
+<tr><td><code>encoder...int8.onnx</code></td><td>21 MB</td><td>看当前这段声音是什么，并结合前后文修正。做 4 倍下采样，每 40 毫秒输出一个向量</td><td>耳朵</td></tr>
+<tr><td><code>decoder...int8.onnx</code></td><td>1.9 MB</td><td>记住"刚才已经说出过哪些字"，压成一个状态</td><td>短期记忆</td></tr>
+<tr><td><code>joiner...int8.onnx</code></td><td>1.8 MB</td><td>把"听到的"和"说到哪了"合成一起，给 5539 个符号各打一个分</td><td>拍板的人</td></tr>
+</table>
+</div>
+<p>所以每一格（40 毫秒）都会产生 <strong>5539 个分数</strong>。你说"你好小派"时，某一格的前几名大概是这样：</p>
+<div class="data">
+你 &nbsp;&nbsp;0.71 &nbsp;<span class="dim">← 选它</span><br>
+以 &nbsp;&nbsp;0.06<br>
+一 &nbsp;&nbsp;0.05<br>
+&lt;blk&gt; 0.04<br>
+异 &nbsp;&nbsp;0.01<br>
+<span class="dim">…… 其余 5534 个接近 0</span>
+</div>
+
+<h3>网络肚子里到底在算什么</h3>
+<p>把它当黑箱太可惜了——它内部其实只做两件事：<strong>加权求和</strong>，然后<strong>把负数压掉</strong>。重复几十层。</p>
+<pre><code><span class="cmt"># 一个神经元干的全部事情（80 个输入简化成 3 个）</span>
+频谱 = [10, 90, 20]
+权重 = [0.1, 0.8, 0.2]
+结果 = 10*0.1 + 90*0.8 + 20*0.2  <span class="cmt"># = 77</span></code></pre>
+<p>那个 <strong>0.8 就是"关注重点"</strong>：它说明这个神经元最在意第二格。第二格能量一高，它就兴奋。旁边另一个神经元可能是 <code>[0.0, 0.1, 0.9]</code>，专盯第三格。</p>
+<div class="tbl-scroll">
+<table>
+<tr><th>问题</th><th>答案</th></tr>
+<tr><td>为什么要几十层？</td><td>单层只能看"某几格高不高"，叠起来才能看"形状"。像认脸：第一层看到有边缘，第二层看到有弧线，第三层认出是鼻子</td></tr>
+<tr><td>21 MB 是什么？</td><td>就是这些权重的总量。14M 指约 1400 万个权重数字。文件名里的 <code>int8</code> 是把每个权重从 4 字节压成 1 字节，所以 encoder 从 40 MB 缩到 21 MB</td></tr>
+<tr><td>训练在干什么？</td><td>喂几万小时录音、每段标好字，让它自己调那 1400 万个权重直到猜对。<strong>没人告诉它每个神经元该负责什么，这个分工是它自己找出来的</strong></td></tr>
+<tr><td>打开 onnx 能看到规则吗？</td><td>看不到。里面全是数字，没有任何人类可读的规则</td></tr>
+</table>
+</div>
+<div class="warn">
+<strong>一句话：</strong>神经网络不认识字，它认识频谱的图案；它不知道规则，它只有几百万个调好的权重。所以"今天→天"这种错，不是逻辑写错了，是权重不够多、图案分不开。
+</div>
+
+<h3>第三步：大部分时候它输出的是"空白"</h3>
+<p>这是最反直觉的一点。<code>&lt;blk&gt;</code> 不是错误，是<strong>正常输出</strong>。0.8 秒的"你好小派"约 20 格，其中 16 格吐的是 <code>&lt;blk&gt;</code>，只有 4 格吐字。</p>
+<div class="data">
+格1 格2 格3 ... 格5 格6 ... 格9 格10 ... 格16 格17 ...<br>
+&lt;blk&gt; &lt;blk&gt; &lt;blk&gt; <span class="dim">…</span> <span class="str">你</span> &lt;blk&gt; <span class="dim">…</span> <span class="str">好</span> &lt;blk&gt; <span class="dim">…</span> <span class="str">小</span> &lt;blk&gt; <span class="dim">…</span> <span class="str">派</span> <span class="dim">…</span>
+</div>
+<p>所以你猜的"组成一段话"，机制上是<strong>边听边吐、吐出来按顺序接上</strong>，不是先找齐所有字再拼。而你那句 <code>get_result()</code>，拿到的就是这个已经累积好的序列。</p>
+
+<h3>第四步：两种决策方式，决定了热词能不能生效</h3>
+<div class="tbl-scroll">
+<table>
+<tr><th>方式</th><th>怎么定</th><th>特点</th></tr>
+<tr><td><code>greedy_search</code><br>贪婪搜索</td><td>每格只取分数最高的一个，不留备选</td><td>快，但错了没得回头。<strong>没法加热词</strong></td></tr>
+<tr><td><code>modified_beam_search</code><br>改进束搜索</td><td>同时保留多条候选路径（如"许新"和"许鑫"并行），走完比总分</td><td>慢一点，但能纠错，<strong>热词只能在这里生效</strong></td></tr>
+</table>
+</div>
+<p>这就解释了 talk.py 第 56～58 行为什么要判断有没有热词文件：</p>
+<pre><code><span class="kw">if</span> hotwords_file <span class="kw">and</span> os.path.exists(hotwords_file):
+    method = <span class="str">"modified_beam_search"</span>   <span class="cmt"># 有热词就必须切到这个</span>
+    kw = dict(hotwords_file=hotwords_file, hotwords_score=2.0)</code></pre>
+<p>热词的作用方式就是<strong>给指定路径补分</strong>。0.71 分的"新"和 0.09 分的"鑫"，加上 <code>hotwords_score=2.0</code> 之后天平就翻了。</p>
+
+<h3>两个老问题，现在可以定性了</h3>
+<div class="tbl-scroll">
+<table>
+<tr><th>现象</th><th>本质</th><th>能不能修</th></tr>
+<tr><td>"许鑫"认成"徐新"</td><td>不是听错，是<strong>选字时按词频选了更常见的同音字</strong></td><td>能。热词补分即可，已解决</td></tr>
+<tr><td>"今天天气"丢掉"今"</td><td>14M 模型太小，<strong>没从音频里提取出 j 这个声母的特征</strong>，压根没听见</td><td>调参数无效。只能换更大模型</td></tr>
+</table>
+</div>
+<p>这两件事长得像，本质完全不同。判断方法就是当初 <code>seginfo.py</code> 干的事：同一段录音，在 0 / 0.2 / 0.35 秒三个位置裁剪后重新解码，如果结果一样，说明字本来就不在模型的判断里，跟录音裁剪无关。</p>
+
+<h3>中文的一个特殊便利</h3>
+<p>中文的 ASR 词表<strong>约等于音节表</strong>——一个汉字一个音节，一字一编号，所以看起来特别像"查字典"。英文不是这样：英文词表存的是 BPE 碎片（如 <code>▁hello</code> 被拆成几块），一个词对应多个编号，需要拼。你觉得"一字一编号"很整齐，这是中文独有的。</p>
+
+<hr>
+
+<p class="lead">如果只记一句话：<strong>这套程序没有"懂"声音，它只是把一串数字翻译成文字、再翻译回数字。</strong>所有的复杂度都不在逻辑上，而在那些数字的边界条件上——1600 除不尽 512、VAD 慢半拍、模型认不出轻声。这三件事占了全部调试时间的八成。</p>
+
+</div>
+</body>
+</html>

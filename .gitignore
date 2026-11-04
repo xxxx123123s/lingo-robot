@@ -1,0 +1,35 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+.tmp/
+.env
+faces/
+
+# ---- 模型与音频（体积大）----
+models/*.onnx
+models/vosk-*/
+*.wav
+*.mp3
+
+# ---- 中间产物 ----
+artifacts/
+
+# ---- 编译产物（Keil / EIDE）----
+**/Objects/
+**/Listings/
+**/build/
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.bin
+*.map
+*.lst
+*.dep
+
+# ---- 工具缓存 ----
+.workbuddy/
+.DS_Store
+Thumbs.db

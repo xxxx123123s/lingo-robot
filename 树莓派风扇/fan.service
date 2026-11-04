@@ -1,0 +1,25 @@
+[Unit]
+Description=CPU 温控风扇 (DRV8833 + PWM + SG90 转向)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -u /home/pi/fan.py
+WorkingDirectory=/home/pi
+Environment=HOME=/home/pi
+Environment=PYTHONUNBUFFERED=1
+# 舵机两个位：吹风位 120°、收起位 0°（实测值，0° 是物理下限，长期顶着
+# 齿轮会松，要留余量就用 5）。不想用舵机就把 FAN_SERVO 设 0。
+Environment=FAN_ANGLE_ON=120
+Environment=FAN_ANGLE_OFF=0
+Environment=FAN_SERVO=1
+# 开机/重启后一律先关着，等人工点开 —— 断电重开时 SoC 还热，自动逻辑会
+# 立刻拉满，而那是整机最脆弱的时候。想恢复"开机就按温度跑"改成 auto。
+Environment=FAN_BOOT_MODE=off
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

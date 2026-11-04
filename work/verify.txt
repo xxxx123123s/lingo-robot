@@ -1,0 +1,8 @@
+output identical to recorded: True
+marker U+2011 present: False
+marker U+002D present: True
+marker line: '【§-01】棋盘统计报告'
+codepoints: U+3010 U+00A7 U+002D U+0030 U+0031 U+3011
+check black=4 line=55
+has U+2460 in code: True
+code has literal backslash-u: False

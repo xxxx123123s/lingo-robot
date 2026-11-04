@@ -1,0 +1,170 @@
+=== PARAGRAPHS ===
+[0] (Normal) 单元2 科学计算库NumPy ·
+[1] (Normal) 学生实训讲义
+[2] (Normal) 课前必读
+[3] (Normal) 每一个 Jupyter Notebook 的第一个代码单元格，必须先导入 numpy 库：import numpy as np
+[4] (Normal) Notebook 保存的文件夹路径、文件名绝对不能包含中文，否则会引发各种报错。
+[5] (Normal) 【示例源码】：来自教材教学设计原始任务。逐行运行代码，看懂逻辑、观察输出，作为完成拓展任务的参考。
+[6] (Normal) 【拓展任务】：新建独立代码单元格完成。每道拓展任务强制要求输出带专属标记【§‑xx】的业务报告，没有该标记视为任务未完成。
+[7] (Normal) 📌 将要用到的方法/函数：列出本任务可使用的 numpy 工具，作为编写代码的参考，不是要求全部使用。
+[8] (Normal) 💡 思路小提示：给出解题逻辑引导，提示容易踩坑的地方。
+[9] (Normal) 作业文件命名：学号_姓名_单元2_NumPy.ipynb。每道拓展任务完成后，截取单元格运行结果截图粘贴到讲义预留位置。
+[11] (Normal) 模块一｜第1课时：数组创建与索引切片
+[12] (Normal) 示例源码：任务2‑1 创建象棋和围棋的棋盘
+[13] (Normal) 🎯 拓展任务2‑1【§‑01】
+[14] (Normal) 任务需求：基于 19×19 的围棋零棋盘，完成下面操作
+[15] (Normal) 使用切片赋值：第3行、第15行全部赋值为2；第7列全部赋值为2，打印修改完成后的棋盘。
+[16] (Normal) 对棋盘四个角坐标 (0,0)、(0,18)、(18,0)、(18,18) 赋值黑子数值 1。
+[17] (Normal) 统计棋盘当中黑子（值等于1）的数量、辅助线格子（值等于2）的数量。
+[18] (Normal) 输出业务报告，报告开头必须原样输出标记字符串：【§‑01】棋盘统计报告，打印黑子、辅助线格子的数量。
+[20] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[22] (Normal) 示例源码：任务2‑2 填色小游戏
+[23] (Normal) 🎯 拓展任务2‑2【§‑02】
+[24] (Normal) 任务需求：生成 11×11 大小的棋盘，完成下面操作
+[25] (Normal) 初始化整个棋盘全部填充为"白"，利用步长切片实现黑白交错，打印交错棋盘。
+[26] (Normal) 将棋盘中间第5行全部修改为"黄"，棋盘四个角修改为"蓝"。
+[27] (Normal) 统计棋盘内黑色格子、黄色格子各自的数量。
+[28] (Normal) 输出业务报告，报告开头原样输出标记字符串：【§‑02】棋盘颜色统计，打印黑色、黄色格子数量。
+[30] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[32] (Normal) 模块二｜第2课时：布尔索引与统计运算
+[33] (Normal) 示例源码：任务2‑3 评选优秀员工
+[34] (Normal) 🎯 拓展任务2‑3【§‑03】
+[35] (Normal) 任务需求：员工绩效数组筛选练习
+[36] (Normal) 从原始数组提取等级、完成率、满意度三列，把完成率、满意度转换为浮点类型。
+[37] (Normal) 构造筛选条件：(等级A 并且 完成率>=105) | 满意度>=4.8，生成布尔掩码，打印掩码观察 True/False。
+[38] (Normal) 使用布尔掩码筛选出满足条件的员工，统计符合条件的总人数。
+[39] (Normal) 输出业务报告，报告开头原样输出标记字符串：【§‑03】员工筛选报告，打印满足条件员工总人数。
+[41] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[43] (Normal) 示例源码：任务2‑4 计算同比增速
+[44] (Normal) 🎯 拓展任务2‑4【§‑04】
+[45] (Normal) 任务需求：基于已经计算完成的同比增速数组做统计
+[46] (Normal) 复用示例代码，得到 year_on_year_growth_rate 增速数组，打印完整增速矩阵。
+[47] (Normal) 使用布尔索引筛选，取出所有增速大于30的数据。
+[48] (Normal) 计算筛选出来的高增速数据的平均值。
+[49] (Normal) 输出业务报告，报告开头原样输出标记字符串：【§‑04】增速统计报告，打印高增速的平均值。
+[51] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[53] (Normal) 模块三｜第3课时：随机漫步与数组重塑
+[54] (Normal) 示例源码：任务2‑5 随机漫步
+[55] (Normal) 🎯 拓展任务2‑5【§‑05】
+[56] (Normal) 任务需求：修改随机漫步参数，完成统计
+[57] (Normal) 设置随机种子 np.random.seed(66)，总步数修改为3000步；0代表向后‑1，1代表向前+1；生成方向数组，使用 cumsum 计算累计距离 distance；打印 distance 前20个元素用于调试。
+[58] (Normal) 求出第一次距离原点绝对值大于20米的步数。
+[59] (Normal) 统计全程距离原点大于10米的总步数。
+[60] (Normal) 输出业务报告，报告开头原样输出标记字符串：【§‑05】随机漫步统计报告，打印两个步数结果。
+[62] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[64] (Normal) 示例源码：任务2‑6 转换销售数据
+[65] (Normal) 🎯 拓展任务2‑6【§‑06】
+[66] (Normal) 任务需求：对原始一维销售数组做重塑、求和、拼接
+[67] (Normal) 将原始一维 sales_data 重塑为 (3,4) 二维数组，打印重塑后的数组。
+[68] (Normal) 计算数组每一行的总和。
+[69] (Normal) 使用 np.vstack()，把行总和追加到二维数组的下方。
+[70] (Normal) 输出业务报告，报告开头原样输出标记字符串：【§‑06】销售汇总报告，打印拼接完成后的完整表格。
+[72] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[74] (Normal) 模块四｜第4课时：排序去重与综合实训
+[75] (Normal) 示例源码：任务2‑7 分店销售信息汇总
+[76] (Normal) 🎯 拓展任务2‑7【§‑07】
+[77] (Normal) 任务需求：门店销售数据排序筛选
+[78] (Normal) 计算每一个门店的销售总销量。
+[79] (Normal) 使用 np.argsort() 获取总销量升序的索引，利用花式索引，把原始销售数组按照门店总销量从小到大重新排序。
+[80] (Normal) 筛选总销量大于2500的门店全部销售数据。
+[81] (Normal) 输出业务报告，报告开头原样输出标记字符串：【§‑07】门店销售分析报告，打印筛选得到的门店数据。
+[83] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[85] (Normal) 示例源码：任务2‑8 兴趣班调查
+[86] (Normal) 🎯 拓展任务2‑8【§‑08】
+[87] (Normal) 任务需求：兴趣班数据筛选统计
+[88] (Normal) 使用 for 循环遍历数组每一行学生信息；筛选同时报名"绘画"和"舞蹈"两门兴趣班的学生，把学生姓名收集保存到 Python 列表中。
+[89] (Normal) 统计满足条件的学生总人数。
+[90] (Normal) 使用 np.unique() 统计全部兴趣班的报名人数。
+[91] (Normal) 输出业务报告，报告开头原样输出标记字符串：【§‑08】兴趣班统计报告，打印筛选出的学生名单以及总人数。
+[93] (Normal) 👉 【运行结果截图粘贴处】：________________________________________
+[95] (Normal) 附录
+[96] (Normal) 学生提交自查清单
+[97] (Normal) 8个任务的示例源码全部运行完毕，单元格有输出结果
+[98] (Normal) 8道拓展任务独立代码单元格；输出包含对应【§‑xx】专属标记业务报告
+[99] (Normal) 每道拓展任务粘贴运行截图
+[100] (Normal) 文件后缀是 .ipynb，文件命名为 学号_姓名_单元2_NumPy.ipynb
+[101] (Normal) 核心语法速查表
+[102] (Normal) 机房常见报错排查
+=== TABLES ===
+--- table 0: 1x1 ---
+课时安排：共4课时，每课时45分钟，1个模块 = 1课时（含2个任务） / 运行环境：本地 Anaconda + Jupyter Notebook（本单元无需任何外部数据文件） / 课堂节奏：教师精讲约10分钟 → 学生阅读运行示例约5分钟 → 完成2道拓展任务约30分钟
+--- table 1: 1x1 ---
+本模块知识点：ndarray 数组创建、数组索引切片赋值；步长切片、astype 类型转换、布尔条件统计 / 包含任务：任务2‑1 创建象棋和围棋的棋盘 ｜ 任务2‑2 填色小游戏
+--- table 2: 1x1 ---
+python / 任务2-1 示例源码 / import numpy as np /  / # 象棋棋盘 / chinese_chess_board = np.array([ /     ['车', '马', '象', '士', '将', '士', '象', '马', '车'], /     ['  ', '  ', '  ', '  ', '  ', '  ', '  ', '  ', '  '], /     ['  ', '炮', '  ', '  ', '  ', '  ', '  ', '炮', '  '], /     ['卒', '  ', '卒', '  ', '卒', '  ', '卒', '  ', '卒'], /     ['  ', '  ', '  ', '  ', '  ', '  ', '  ', '  ', '  '], /     ['  ', '  ', '  ', '  ', '  ', '  ', '  ', '  ', '  '], /     ['兵', '  ', '兵', '  ', '兵', '  ', '兵', '  ', '兵'], /     ['  ', '炮', '  ', '  ', '  ', '  ', '  ', '炮', '  '], /     ['  ', '  ', '  ', '  ', '  ', '  ', '  ', '  ', '  '], /     ['车', '马', '相', '士', '帅', '士', '相', '马', '车'] / ]) /  / # 围棋棋盘 19×19 / go_board = np.zeros((19, 19), dtype=int) /  / print("象棋棋盘：") / print(chinese_chess_board) / print("\n围棋棋盘 shape：", go_board.shape)
+--- table 3: 1x1 ---
+将要用到的方法/函数 / 切片批量赋值：数组[行切片, :]、数组[:, 列切片] / 单点位置赋值：arr[x, y] = 数值 / 条件统计元素个数：np.sum(go_board == 指定数值)
+--- table 4: 1x1 ---
+思路小提示：先修改棋盘内容，再做统计，顺序不要颠倒。切片是左闭右开规则，注意行、列下标从0开始，不要把19行写成下标19。
+--- table 5: 1x1 ---
+python / 任务2-2 示例源码 / import numpy as np /  / # 创建8行8列的二维数组 / chessboard = np.zeros((8, 8), dtype=int) / new_chessboard = chessboard.astype(np.object_) / new_chessboard[::] = '白' /  / # 奇数行偶数列的元素设置为'黑' / new_chessboard[1::2, ::2] = '黑' / # 偶数行奇数列的元素设置为'黑' / new_chessboard[::2, 1::2] = '黑' /  / # 四个角的元素设置为'红' / new_chessboard[0, 0] = '红' / new_chessboard[0, 7] = '红' / new_chessboard[7, 0] = '红' / new_chessboard[7, 7] = '红' /  / print(new_chessboard)
+--- table 6: 1x1 ---
+将要用到的方法/函数 / 步长切片语法：arr[start::step] / astype()：转换数组存储的数据类型，用于存放字符串 / 条件统计字符串数量：np.sum(arr == "字符串内容")
+--- table 7: 1x1 ---
+思路小提示：先整体填充底色，再使用切片批量修改局部颜色。下标从0开始，11行棋盘的中间行下标是5。
+--- table 8: 1x1 ---
+第1课时完成检查：已运行模块一2份示例源码；完成拓展任务2‑1、2‑2；保存 Notebook 文件。
+--- table 9: 1x1 ---
+本模块知识点：布尔索引、多条件逻辑；数组算术运算、广播、统计函数 / 包含任务：任务2‑3 评选优秀员工 ｜ 任务2‑4 计算同比增速
+--- table 10: 1x1 ---
+python / 任务2-3 示例源码 / import numpy as np /  / work_performance = np.array([ /     ['张三', 'A', 105, 4.5], /     ['李四', 'B', 100, 4.6], /     ['王五', 'B', 100, 4.5], /     ['赵六', 'A', 116, 4.9], /     ['孙七', 'B', 100, 4.5], /     ['周八', 'B', 99, 4.3], /     ['吴九', 'A', 120, 4.6], /     ['郑十', 'A', 115, 4.8] / ]) /  / performance_level = work_performance[:, 1] / target_rate = work_performance[:, 2].astype(float) / satisfaction = work_performance[:, 3].astype(float) /  / # 构建布尔条件：A级，完成率≥110，满意度>4.5 / condition = (performance_level == 'A') & (target_rate >= 110) & (satisfaction > 4.5) / final_data = work_performance[condition] / employee_name = final_data[:, 0] /  / print("优秀员工姓名：") / print(employee_name)
+--- table 11: 1x1 ---
+将要用到的方法/函数 / 列切片提取数据：arr[:, 列下标] / astype(float)：字符串转为浮点数字 / 多条件布尔运算：& 代表并且，| 代表或者；每一个小条件必须加括号；numpy 数组禁止使用 and / or / 布尔索引筛选：arr[condition] / 统计掩码中 True 的数量：np.sum(condition)
+--- table 12: 1x1 ---
+思路小提示：打印布尔掩码可以调试，快速查看哪一行满足条件，方便排查写错条件的 bug。
+--- table 13: 1x1 ---
+python / 任务2-4 示例源码 / import numpy as np /  / last_year_data = np.array([ /     [100, 105, 111], /     [115, 113, 120], /     [130, 125, 131], /     [150, 151, 160] / ]) / this_year_data = np.array([ /     [110, 125, 135], /     [145, 155, 165], /     [175, 185, 195], /     [205, 215, 225] / ]) /  / year_on_year_growth_rate = ((this_year_data - last_year_data) / last_year_data) * 100 / average_growth_rate = np.mean(year_on_year_growth_rate) / max_growth_rate = np.max(year_on_year_growth_rate) / min_growth_rate = np.min(year_on_year_growth_rate) /  / print("每月的同比增速（百分比）：\n", year_on_year_growth_rate) / print("全年的平均增速（百分比）：", average_growth_rate) / print("全年的最高增速（百分比）：", max_growth_rate) / print("全年的最低增速（百分比）：", min_growth_rate)
+--- table 14: 1x1 ---
+将要用到的方法/函数 / 布尔条件筛选：year_on_year_growth_rate > 30 / 布尔索引取出数据：数组[条件] / 求平均值：np.mean()
+--- table 15: 1x1 ---
+思路小提示：筛选之后得到的是一维数组，可以直接传入 np.mean 做统计。
+--- table 16: 1x1 ---
+第2课时完成检查：已运行模块二2份示例源码；完成拓展任务2‑3、2‑4；保存 Notebook 文件。
+--- table 17: 1x1 ---
+本模块知识点：np.random 随机数、np.where、cumsum 累计求和；reshape 重塑、vstack 数组拼接 / 包含任务：任务2‑5 随机漫步 ｜ 任务2‑6 转换销售数据
+--- table 18: 1x1 ---
+python / 任务2-5 示例源码 / import numpy as np /  / steps = 2000 / draws = np.random.randint(0, 2, size=steps) / direction_steps = np.where(draws > 0, 1, -1) / distance = direction_steps.cumsum() /  / max_forward = distance.max() * 0.5 / max_backward = np.abs(distance.min()) * 0.5 / step_15m = (np.abs(distance) >= 15 / 0.5).argmax() /  / print("最大向前距离：", max_forward, "米") / print("最大向后距离：", max_backward, "米") / print("第一次到达15米的步数：", step_15m)
+--- table 19: 1x1 ---
+将要用到的方法/函数 / 设置随机种子：np.random.seed()，保证每次运行结果一致 / 生成随机整数：np.random.randint() / 条件选择：np.where() / 累计求和：.cumsum() / 取绝对值：np.abs() / 获取第一个满足条件的下标：.argmax() / 布尔条件统计数量：np.sum(布尔条件)
+--- table 20: 1x1 ---
+思路小提示：设置 seed 必须放在生成随机数代码的前面，否则不起作用。
+--- table 21: 1x1 ---
+python / 任务2-6 示例源码 / import numpy as np /  / sales_data = np.array([230, 150, 200, 180, 220, 250, 300, 280, 320, 350, 400, 380]) / reshaped_sales_data = sales_data.reshape(4, 3) / transposed_sales_data = reshaped_sales_data.T / quarterly_sum_sales = np.sum(transposed_sales_data, axis=0) / sales_data_with_sum = np.vstack([transposed_sales_data, quarterly_sum_sales]) /  / print("转换后带总和的销售数据：") / print(sales_data_with_sum)
+--- table 22: 1x1 ---
+将要用到的方法/函数 / 数组形状重塑：.reshape(行,列) / 按行求和：np.sum(arr, axis=1) / 垂直上下拼接数组：np.vstack([数组1,数组2])
+--- table 23: 1x1 ---
+思路小提示：reshape 的时候总元素个数必须等于原始数组，12个元素才可以 reshape 成 (3,4)。vstack 拼接时两个数组的列数必须相等。
+--- table 24: 1x1 ---
+第3课时完成检查：已运行模块三2份示例源码；完成拓展任务2‑5、2‑6；保存 Notebook 文件。
+--- table 25: 1x1 ---
+本模块知识点：argsort 排序索引、布尔筛选；flatten 数组展开、np.unique 统计计数 / 包含任务：任务2‑7 分店销售信息汇总 ｜ 任务2‑8 兴趣班调查
+--- table 26: 1x1 ---
+python / 任务2-7 示例源码 / import numpy as np /  / sales_data = np.array([ /     [550, 700, 620, 800], /     [430, 500, 480, 550], /     [900, 850, 950, 1000], /     [720, 680, 710, 690], /     [620, 580, 600, 650], /     [800, 750, 780, 820] / ]) /  / sorted_sales = np.sort(sales_data, axis=1) / each_store_max = sorted_sales[:, 3] / each_store_total = np.sum(sales_data, axis=1) / is_valid = np.all((sorted_sales >= 0) & (sorted_sales <= 2000)) /  / print("各门店的最多销售量：", each_store_max) / print("各门店的总销售量：", each_store_total) / if is_valid: /     print("所有商品销售量在合理范围内。") / else: /     print("存在商品销售量不在合理范围内。")
+--- table 27: 1x1 ---
+将要用到的方法/函数 / 按行求和：np.sum(arr, axis=1) / 返回排序索引：np.argsort()，返回的是下标，不是排序后的数值 / 花式索引重排数组：sales_data[索引数组] / 布尔索引筛选数据
+--- table 28: 1x1 ---
+思路小提示：argsort 不会修改原数组，返回的是排序之后元素在原数组中的位置下标，用这个下标做花式索引才可以重排原始表格。
+--- table 29: 1x1 ---
+python / 任务2-8 示例源码 / import numpy as np /  / course_data = np.array([ /     ["张三", "舞蹈", "钢琴", "武术"], /     ["李四", "绘画", "舞蹈", "游泳"], /     ["王五", "游泳", "舞蹈", "轮滑"], /     ["赵六", "轮滑", "绘画", "武术"], /     ["周七", "外语", "声乐", "绘画"], /     ["韩八", "游泳", "外语", "钢琴"], /     ["秦九", "篮球", "钢琴", "声乐"], /     ["郑十", "轮滑", "篮球", "绘画"] / ]) /  / all_courses = course_data[:, 1:].flatten() / unique_courses, course_counts = np.unique(all_courses, return_counts=True) /  / for course, count in zip(unique_courses, course_counts): /     print(f"{course}班：{count}人")
+--- table 30: 1x1 ---
+将要用到的方法/函数 / for 循环遍历二维数组行：for row in course_data: / 列表：name_list = []，name_list.append(名字) 收集结果 / 判断元素是否在序列：np.isin() / 去重并计数：np.unique(..., return_counts=True)
+--- table 31: 1x1 ---
+思路小提示：每一行 row[0] 是学生姓名，row[1:] 是该学生报的兴趣班。
+--- table 32: 1x1 ---
+第4课时完成检查：已运行模块四2份示例源码；完成拓展任务2‑7、2‑8；整体自查，保存并提交 Notebook 作业。
+--- table 33: 8x2 ---
+分类 | 常用函数/方法
+数组创建 | np.array() ｜ np.zeros() ｜ np.ones() ｜ np.arange() ｜ np.linspace()
+属性与类型 | arr.ndim ｜ arr.shape ｜ arr.astype()
+索引与筛选 | arr[行,列] ｜ 布尔索引 arr[条件] ｜ 花式索引 arr[[i,j]]
+运算与统计 | +‑*/ ｜ sum() ｜ mean() ｜ max() ｜ min() ｜ median() ｜ cumsum()
+随机与条件 | np.random.seed() ｜ np.random.randint() ｜ np.where() ｜ np.isin()
+形状操作 | reshape() ｜ arr.T ｜ np.vstack() ｜ np.hstack() ｜ flatten()
+排序与去重 | sort(axis=) ｜ argsort() ｜ np.all() ｜ np.any() ｜ np.unique()
+--- table 34: 6x2 ---
+报错现象 | 排查方法
+广播报错：operands could not be broadcast together | 打印数组 .shape，核对两个数组维度是否匹配
+reshape 报错：cannot reshape array of size ... | reshape 前后数组总元素数量必须完全相等
+vstack/hstack 拼接报错 | 除拼接轴以外，其余维度大小要匹配；一维数组做列拼接需要 reshape(-1,1)
+ModuleNotFoundError: No module named 'numpy' | 确认打开的是 Anaconda 自带 Jupyter，不要使用系统 Python
+中文路径报错 | 把 Notebook 移动到全英文文件夹下

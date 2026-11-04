@@ -1,0 +1,28 @@
+{
+  "genre": "business-report",
+  "theme_name": "business-modern",
+  "theme_file": "tokens/themes/business-modern.json",
+  "overrides": {
+    "typography.fontFamily.body": "SimSun, 宋体, serif",
+    "typography.fontFamily.heading": "SimSun, 宋体, serif",
+    "typography.fontSize.body": "12pt",
+    "spacing.indent": "2em",
+    "reason": "转换层取 font-family 第一项作为 Word 的 eastAsia 字体，系统别名（Microsoft YaHei / PingFang SC）会让字体失效；正文小四 12pt、首行缩进 2em 为硬要求，覆盖主题的 9pt/0em"
+  },
+  "css_variables": {
+    "--color-primary": "#1565C0",
+    "--color-secondary": "#0288D1",
+    "--color-accent": "#00897B",
+    "--color-text": "#212121",
+    "--color-textSecondary": "#616161",
+    "--color-heading": "#1A237E",
+    "--color-divider": "#E0E0E0",
+    "--color-surface": "#F5F7FA",
+    "--typography-fontSize-body": "12pt",
+    "--typography-lineHeight-body": "1.6",
+    "--layout-marginTop": "2.5cm",
+    "--layout-marginLeft": "2.5cm",
+    "--layout-marginRight": "2.5cm",
+    "--layout-marginBottom": "2.0cm"
+  }
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Xiaopai touch hub (multi-app control center)
+After=network-online.target sound.target bluetooth.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -u /home/pi/hub.py
+Restart=always
+RestartSec=3
+# 退出时一定要让车停下：hub.py 自己会在 shutdown() 里发 [stop]，
+# 这里的 KillSignal 用 SIGINT，让它走完整的清理流程（默认 SIGTERM 也能触发 finally）
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

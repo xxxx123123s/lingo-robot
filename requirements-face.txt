@@ -1,0 +1,14 @@
+# 人脸检测 / 识别
+#
+# 树莓派优先用系统包，避免和 picamera2 的 numpy 版本冲突：
+#   sudo apt update
+#   sudo apt install -y python3-opencv python3-numpy python3-picamera2
+#
+# 只有当系统 OpenCV 没有 FaceDetectorYN（版本太旧）时，才在 venv 里安装：
+#   python3 -m venv --system-site-packages .venv
+#   source .venv/bin/activate
+#   pip install --upgrade opencv-python-headless numpy
+#
+# 这里保留依赖清单，方便你查看版本要求。
+opencv-python-headless>=4.8
+numpy>=1.24

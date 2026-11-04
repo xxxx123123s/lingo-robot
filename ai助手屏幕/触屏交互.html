@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>给小派加一块触摸屏</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg2:#f7f7f5; --bg3:#f1efea;
+    --fg:#1f1e1c; --fg2:#5f5e5a; --fg3:#8a8880;
+    --line:#e3e0d8;
+    --blue:#185fa5; --blue-bg:#e6f1fb; --blue-line:#b5d4f4;
+    --teal:#0f6e56; --teal-bg:#e1f5ee; --teal-line:#9fe1cb;
+    --amber:#854f0b; --amber-bg:#faeeda; --amber-line:#fac775;
+    --red:#a32d2d; --red-bg:#fcebeb; --red-line:#f7c1c1;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:56px 28px 120px}
+  header{margin-bottom:36px}
+  h1{font-size:28px; font-weight:600; margin:0 0 12px; letter-spacing:-.3px}
+  .sub{color:var(--fg2); font-size:16px; margin:0}
+  h2{font-size:21px; font-weight:600; margin:52px 0 10px; letter-spacing:-.2px}
+  h2 .num{color:var(--fg3); font-weight:400; margin-right:10px}
+  h3{font-size:15.5px; font-weight:600; margin:26px 0 6px}
+  p{margin:10px 0}
+  code{font-family:var(--mono); font-size:13px; background:var(--bg3); padding:1px 5px; border-radius:4px}
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.7; background:var(--bg2);
+      border:1px solid var(--line); border-radius:8px; padding:14px 16px; overflow-x:auto}
+  pre code{background:none; padding:0}
+  table{width:100%; border-collapse:collapse; margin:16px 0; font-size:13.5px}
+  th{text-align:left; font-weight:600; padding:9px 12px; background:var(--bg3);
+     border-bottom:1px solid var(--line); white-space:nowrap}
+  td{padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  .shots{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:22px 0}
+  .shot{border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--bg2)}
+  .shot img{width:100%; display:block}
+  .shot span{display:block; font-size:11.5px; color:var(--fg2); padding:6px 8px; text-align:center;
+             border-top:1px solid var(--line)}
+  .warn{background:var(--amber-bg); border:1px solid var(--amber-line); border-radius:8px;
+        padding:12px 16px; font-size:13.5px; color:#412402; margin:14px 0}
+  .ok{background:var(--teal-bg); border:1px solid var(--teal-line); border-radius:8px;
+      padding:12px 16px; font-size:13.5px; color:#04342c; margin:14px 0}
+  .bad{background:var(--red-bg); border:1px solid var(--red-line); border-radius:8px;
+       padding:12px 16px; font-size:13.5px; color:#501313; margin:14px 0}
+  blockquote{margin:18px 0; padding:2px 0 2px 16px; border-left:3px solid var(--blue-line);
+             color:var(--fg2); background:linear-gradient(90deg,var(--blue-bg),transparent 85%);
+             border-radius:0 6px 6px 0}
+  blockquote p{margin:8px 0}
+  .flow{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:18px 0; font-size:13px}
+  .flow i{font-style:normal; color:var(--fg3)}
+  .box{border:1px solid var(--line); border-radius:9px; padding:9px 12px; background:var(--bg2)}
+  .box b{display:block; font-size:12.5px; font-weight:600}
+  .box span{display:block; font-size:11.5px; color:var(--fg2); font-family:var(--mono)}
+  .box.hot{background:var(--blue-bg); border-color:var(--blue-line)}
+  .box.new{background:var(--teal-bg); border-color:var(--teal-line)}
+  @media (max-width:700px){
+    .wrap{padding:32px 18px 80px}
+    .shots{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>给小派加一块触摸屏</h1>
+  <p class="sub">原来它是"只能听、只能用嘴问"的。现在它有脸了，也能被戳。</p>
+</header>
+
+<p>语音那条链路（麦克风 → VAD → 识别 → DeepSeek → 朗读）一行都没动。新加的是一层<strong>看得见、按得着</strong>的界面：
+240×320 的屏上有一张会眨眼的脸、一个会说人话的气泡，和三个按钮。</p>
+
+<blockquote>
+<p>最关键的一处改动不是"加了个屏"，而是<strong>把"什么时候开始听"的决定权从 VAD 手里交给了你的手指</strong>。
+VAD 靠停顿断句，风扇声、咳嗽都能骗它；按住说话不会。</p>
+</blockquote>
+
+<h2 id="s1"><span class="num">01</span>七种状态，一眼看完</h2>
+
+<p>下面每一张都是 240×320 的真实渲染结果（同一份绘制代码，在电脑上跑出来的）。</p>
+
+<div class="shots">
+  <div class="shot"><img src="preview/preview_01_idle.png" alt="待机"><span>待机</span></div>
+  <div class="shot"><img src="preview/preview_02_listening.png" alt="在听"><span>按住说话</span></div>
+  <div class="shot"><img src="preview/preview_03_thinking.png" alt="在想"><span>等大模型</span></div>
+  <div class="shot"><img src="preview/preview_04_speaking.png" alt="在说"><span>朗读中</span></div>
+  <div class="shot"><img src="preview/preview_05_happy.png" alt="摸头"><span>摸头</span></div>
+  <div class="shot"><img src="preview/preview_06_mute.png" alt="静音"><span>静音</span></div>
+  <div class="shot"><img src="preview/preview_07_longpress.png" alt="长按"><span>长按清空上下文</span></div>
+</div>
+
+<h2 id="s2"><span class="num">02</span>屏幕是怎么切开的</h2>
+
+<table>
+<thead><tr><th>区域</th><th>像素范围</th><th>里面有什么</th><th>多久变一次</th></tr></thead>
+<tbody>
+<tr><td>状态条</td><td>y 0–27</td><td>呼吸圆点、名字、状态词、免提开关</td><td>每帧</td></tr>
+<tr><td>宠物脸</td><td>y 28–164</td><td>脑袋、耳朵、天线、眼珠、嘴、腮红</td><td>每帧</td></tr>
+<tr><td>音量条</td><td>y 158–172</td><td>22 根竖条，中间高两边低的包络</td><td>每帧（只在听/说时出现）</td></tr>
+<tr><td>气泡</td><td>y 176–250</td><td>上一句你说的话（灰）+ 它现在的回答（白，最多 3 行）</td><td>只有换内容时</td></tr>
+<tr><td>按钮</td><td>y 253–309</td><td>静音 / 按住说话 / 重说</td><td>只有换状态时</td></tr>
+</tbody>
+</table>
+
+<p>这个切分不是为了好看，是为了<strong>帧率</strong>。整屏 153,600 字节，40MHz 的 SPI 推一遍要 36ms；
+只推上半屏（脸 + 音量条）只要 20ms。下半屏（气泡和按钮）内容几秒才变一次，
+所以只在变的时候推。这样 14–16fps 的动画不会把 SPI 总线占满，也就不会拖慢识别。</p>
+
+<div class="warn">
+<strong>为什么不用 fbtft / fbcp？</strong>因为这块屏在这台机器上一直是"Python 直接用 spidev 画"的路线，
+没有 <code>/dev/fb</code>，也不需要改 <code>config.txt</code>。好处是没有内核依赖，
+坏处是整屏像素要自己算——这也是为什么要做局部刷新。
+</div>
+
+<h2 id="s3"><span class="num">03</span>手能做什么</h2>
+
+<table>
+<thead><tr><th>动作</th><th>发生什么</th><th>为什么这么设计</th></tr></thead>
+<tbody>
+<tr><td>按住大按钮</td><td>立刻开始录音，松手才识别；松手前下面显示"已录 3s"</td><td>把"什么时候算一句话"的决定权交给你。VAD 会被噪声骗，手指不会</td></tr>
+<tr><td>朗读中按大按钮</td><td>正在念的那句被 <code>kill</code> 掉，马上开始录新的</td><td>等它念完 40 个字太浪费时间；打断比排队自然</td></tr>
+<tr><td>点脸</td><td>表情变开心（^ ^ + 腮红 + 星星），说一句撒娇的话</td><td>回的是本地词库，不走大模型，所以是"秒回"——摸头要的就是即时反应</td></tr>
+<tr><td>长按脸 1 秒</td><td>清空上下文，脸周围画一圈进度，松手后说"之前聊的我都忘掉了"</td><td>长按是"重来"，避免误触把对话记录清掉</td></tr>
+<tr><td>点气泡 / 点 ↻</td><td>重念上一句回答</td><td>没听清时不用再问一遍大模型，省一次请求</td></tr>
+<tr><td>点 🔊</td><td>静音：只显示文字，不出声</td><td>晚上用的时候只想知道它答了什么</td></tr>
+<tr><td>点"免提"</td><td>打开 VAD 自动听，不用按按钮</td><td>这就是原来 <code>chat.py</code> 的行为，保留成可选</td></tr>
+<tr><td>手指滑动</td><td>眼珠跟着手指看</td><td>触摸有没有生效，不用等按下按钮就知道</td></tr>
+</tbody>
+</table>
+
+<h2 id="s4"><span class="num">04</span>代码只多了三个文件</h2>
+
+<div class="flow">
+  <div class="box new"><b>petui.py</b><span>纯 PIL 绘制</span></div><i>←</i>
+  <div class="box new"><b>pet.py</b><span>命令 + 线程编排</span></div><i>→</i>
+  <div class="box new"><b>screen.py</b><span>SPI / GPIO</span></div>
+</div>
+
+<p>分层的关键是 <strong><code>petui.py</code> 里没有一行硬件代码</strong>：它只接收一个"状态对象"，返回一张图片。
+所以它能在电脑上直接跑出上面那七张预览图，改界面时不用每次都上传到树莓派。</p>
+
+<div class="flow">
+  <div class="box"><b>screen.py</b><span>ST7789 初始化 / 刷屏 / XPT2046 / 触摸事件线程</span></div>
+  <div class="box"><b>petui.py</b><span>脸 / 气泡 / 按钮 / 命中判定</span></div>
+  <div class="box hot"><b>pet.py</b><span>按下→录音→识别→大模型→朗读</span></div>
+</div>
+
+<h3>三个线程，各管一件事</h3>
+<table>
+<thead><tr><th>线程</th><th>干什么</th><th>为什么单独开</th></tr></thead>
+<tbody>
+<tr><td>采集</td><td>一直从 <code>arecord</code> 读 0.1 秒一块的音频，算 RMS，丢进队列</td><td>声卡缓冲会溢出，读得慢了就丢音</td></tr>
+<tr><td>大脑</td><td>处理命令、攒音频、喂 VAD、识别、问大模型、朗读</td><td>这些全是阻塞操作（识别 0.6s、大模型 1s、朗读 3s）</td></tr>
+<tr><td>界面（主线程）</td><td>收触摸事件、跑动画、按 15fps 刷屏</td><td>刷屏 36ms 一次，绝不能和识别抢同一个循环</td></tr>
+</tbody>
+</table>
+
+<pre><code><span class="cmt"># 朗读用 Popen 而不是 run，才能被"按一下"打断</span>
+self.spk = subprocess.Popen([<span class="str">"aplay"</span>, <span class="str">"-D"</span>, out, <span class="str">"-q"</span>, wav_path])
+<span class="kw">while</span> self.spk.poll() <span class="kw">is</span> <span class="kw">None</span>:
+    <span class="kw">if</span> self.st.interrupt:          <span class="cmt"># 手指按下大按钮</span>
+        self.spk.terminate()        <span class="cmt"># 当场掐掉</span>
+        <span class="kw">break</span>
+    time.sleep(<span class="str">0.03</span>)</code></pre>
+
+<h2 id="s5"><span class="num">05</span>现在的状态</h2>
+
+<div class="ok">
+<strong>屏幕这一路：通了。</strong>实测背光会闪、全屏能依次刷红绿蓝白黑，40MHz 下整帧 36ms、
+上半屏 20ms，界面稳定在 14–16fps。语音那一路也验过：<em>按住说话</em> 的完整链路
+（2.84 秒合成语音灌进去 → 识别 → DeepSeek → SAPI 朗读）跑通，识别耗时 0.61 秒。
+</div>
+
+<div class="bad">
+<strong>触摸这一路：电上没有响应。</strong>按下屏幕时 <code>T_IRQ</code>(GPIO22) 一直是高电平，
+读 <code>XPT2046</code> 的 X/Y 一直返回固定值 (<code>1024,1024</code>)，旧版「打地鼠」自检脚本
+跑出来也是同样的值——所以不是新代码的问题，是接线断了。
+10 月 25 号那次校准还能用（原始值范围 X 0–3631 / Y 625–4095），说明这块屏的触摸本来是好的。
+</div>
+
+<h3>按这个顺序查那五根线</h3>
+<table>
+<thead><tr><th>模块引脚</th><th>应该接到</th><th>接错的后果</th></tr></thead>
+<tbody>
+<tr><td>T_CS</td><td>GPIO6（物理 31）</td><td>芯片永远不被选中，读回全 0 或固定值</td></tr>
+<tr><td><strong>T_DO</strong></td><td>GPIO9（物理 21，MISO）</td><td>最常漏的一根。漏了就会像现在这样读到固定值</td></tr>
+<tr><td>T_IRQ</td><td>GPIO22（物理 15）</td><td>按下时 IRQ 不跳变，程序只能靠轮询，反应变慢</td></tr>
+<tr><td>T_CLK / T_DIN</td><td>与 SCL / MOSI <em>并联</em></td><td>显示能亮不代表这两根接上了触摸</td></tr>
+<tr><td>触摸排线（FPC）</td><td>插到底、压紧</td><td>整块触摸失效</td></tr>
+</tbody>
+</table>
+
+<p>接好之后，两条命令就能确认：</p>
+<pre><code>python3 pet.py --check        <span class="cmt"># 屏上实时显示 IRQ / 原始坐标 / 换算坐标，按一下看有没有变</span>
+python3 pet.py --calibrate    <span class="cmt"># 点四个十字，重新算 touch_cal.json</span></code></pre>
+
+<p>接线和图上不一样也没关系，引脚可以用环境变量临时改：</p>
+<pre><code>LCD_TOUCH_IRQ=17 LCD_TOUCH_CS=7 python3 pet.py --check</code></pre>
+
+<h2 id="s6"><span class="num">06</span>启动</h2>
+
+<pre><code><span class="cmt"># PC 上（必须先开，否则朗读退回机械音）</span>
+D:\智能桌宠\麦克佛加喇叭\pc\启动语音服务.bat
+
+<span class="cmt"># 树莓派</span>
+ssh pi@192.168.137.160            <span class="cmt"># 密码 123</span>
+cd ~
+python3 pet.py                    <span class="cmt"># 按住按钮说话</span>
+python3 pet.py --auto             <span class="cmt"># 免提模式，不用按</span>
+python3 pet.py --demo             <span class="cmt"># 只跑界面，不占麦克风</span></code></pre>
+
+<div class="warn">
+<strong>USB 麦克风是独占的。</strong>如果提示 <code>Device or resource busy</code>，
+先 <code>pkill -f '[p]et\.py'</code>，确认没有别的 <code>chat.py</code> / <code>talk.py</code> 在跑。
+注意要写成 <code>[p]et\.py</code>，否则 <code>pkill</code> 会把执行它的那条 SSH 命令行一起杀掉。
+</div>
+
+<hr style="border:none;border-top:1px solid var(--line);margin:48px 0">
+
+<p style="color:var(--fg2)">一句话总结：<strong>语音负责"能聊"，屏幕负责"知道它在听、知道它答了什么"。</strong>
+VAD 那套逻辑没有删，只是从"默认"变成了"免提开关"——因为手指比算法更清楚你什么时候开始说话。</p>
+
+</div>
+</body>
+</html>

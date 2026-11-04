@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>树莓派智能桌宠与语音交互平衡车系统</title>
+<style>
+  /* 页面级规则：正文页脚居中页码，封面页不显示页脚 */
+  @page { @bottom-center { content: counter(page); } }
+  @page cover { @bottom-center { content: none; } }
+  section[role="cover"] { page: cover; }
+
+  :root {
+    --ff-body: "SimSun", "宋体", serif;
+    --ff-heading: "SimSun", "宋体", serif;
+    --ff-code: "Consolas", "Monaco", monospace;
+
+    --fs-doc-title: 20pt;
+    --fs-h2: 16pt;
+    --fs-h3: 14pt;
+    --fs-body: 12pt;
+    --fs-table: 10.5pt;
+    --fs-code: 8pt;
+    --fs-cover-cat: 14pt;
+    --fs-cover-main: 26pt;
+    --fs-cover-sub: 14pt;
+    --fs-toc-title: 18pt;
+
+    --lh-body: 1.6;
+    --lh-heading: 1.4;
+    --lh-table: 1.45;
+    --lh-code: 1.35;
+
+    --color-text: #212121;
+    --color-heading: #1A237E;
+    --color-primary: #1565C0;
+    --color-muted: #616161;
+    --color-bg: #ffffff;
+    --color-surface: #F5F7FA;
+    --color-thbg: #E8F0FE;
+    --color-border: #B8C6DA;
+    --color-border-soft: #DDE3EC;
+
+    --sp-indent: 2em;
+    --sp-p: 0 0 0.55em 0;
+    --sp-li: 0 0 0.25em 0;
+    --sp-h2: 1.1em 0 0.5em 0;
+    --sp-h3: 0.8em 0 0.4em 0;
+    --sp-table: 0.6em 0 1em 0;
+    --sp-cell: 5pt 6pt;
+    --sp-pre: 8pt 10pt;
+    --sp-list-left: 2.4em;
+    --sp-toc-left: 2em;
+
+    --bw-accent: 4px;
+    --bw-rule: 2px;
+  }
+
+  body {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--color-text);
+    background: var(--color-bg);
+  }
+  p {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--color-text);
+    text-indent: var(--sp-indent);
+    margin: var(--sp-p);
+  }
+  h1 {
+    font-family: var(--ff-heading);
+    font-size: var(--fs-doc-title);
+    font-weight: bold;
+    color: var(--color-heading);
+    line-height: var(--lh-heading);
+    text-indent: 0;
+    text-align: center;
+    margin: var(--sp-h2);
+  }
+  h2 {
+    font-family: var(--ff-heading);
+    font-size: var(--fs-h2);
+    font-weight: bold;
+    color: var(--color-heading);
+    line-height: var(--lh-heading);
+    text-indent: 0;
+    margin: var(--sp-h2);
+  }
+  h3 {
+    font-family: var(--ff-heading);
+    font-size: var(--fs-h3);
+    font-weight: bold;
+    color: var(--color-primary);
+    line-height: var(--lh-heading);
+    text-indent: 0;
+    margin: var(--sp-h3);
+  }
+  ul, ol {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--color-text);
+    margin: var(--sp-p);
+    padding-left: var(--sp-list-left);
+  }
+  li {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--color-text);
+    text-indent: 0;
+    margin: var(--sp-li);
+  }
+  strong { font-weight: bold; color: var(--color-primary); }
+  .key { font-weight: bold; color: var(--color-primary); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--ff-body);
+    font-size: var(--fs-table);
+    line-height: var(--lh-table);
+    margin: var(--sp-table);
+  }
+  thead th {
+    font-family: var(--ff-body);
+    font-size: var(--fs-table);
+    font-weight: bold;
+    color: var(--color-heading);
+    background: var(--color-thbg);
+    border: 1px solid var(--color-border);
+    padding: var(--sp-cell);
+    text-align: left;
+    text-indent: 0;
+  }
+  tbody td {
+    font-family: var(--ff-body);
+    font-size: var(--fs-table);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    padding: var(--sp-cell);
+    text-indent: 0;
+  }
+  pre {
+    font-family: var(--ff-code);
+    font-size: var(--fs-code);
+    line-height: var(--lh-code);
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-soft);
+    padding: var(--sp-pre);
+    white-space: pre;
+    text-indent: 0;
+    margin: var(--sp-table);
+  }
+
+  /* 封面 */
+  .cover-wrap { padding-top: 3.2cm; }
+  .cover-cat {
+    font-family: var(--ff-heading);
+    font-size: var(--fs-cover-cat);
+    font-weight: bold;
+    color: var(--color-primary);
+    letter-spacing: 0.3em;
+    text-indent: 0;
+    margin: var(--sp-p);
+  }
+  .cover-main {
+    font-family: var(--ff-heading);
+    font-size: var(--fs-cover-main);
+    font-weight: bold;
+    color: var(--color-heading);
+    line-height: var(--lh-heading);
+    text-indent: 0;
+    margin: var(--sp-h3);
+  }
+  .cover-sub {
+    font-family: var(--ff-body);
+    font-size: var(--fs-cover-sub);
+    color: var(--color-muted);
+    line-height: var(--lh-body);
+    text-indent: 0;
+    margin: var(--sp-h3);
+  }
+  .cover-rule { border-bottom: var(--bw-rule) solid var(--color-primary); width: 100%; margin: var(--sp-p); }
+  .cover-meta {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    color: var(--color-text);
+    line-height: 2.0;
+    text-indent: 0;
+  }
+  .cover-meta p {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    color: var(--color-text);
+    line-height: 2.0;
+    text-indent: 0;
+    margin: var(--sp-li);
+  }
+
+  /* 目录 */
+  .toc-title {
+    font-family: var(--ff-heading);
+    font-size: var(--fs-toc-title);
+    font-weight: bold;
+    color: var(--color-heading);
+    text-indent: 0;
+    text-align: center;
+    margin: var(--sp-h2);
+  }
+  .toc-list, .toc-list ol, .toc-list ul { list-style: none; list-style-type: none; padding-left: 0; margin: 0; }
+  .toc-list li {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    line-height: 1.85;
+    text-indent: 0;
+    margin: 0;
+  }
+  .toc-list > li > a { font-weight: bold; color: var(--color-heading); text-decoration: none; }
+  .toc-list ol li a { font-weight: normal; color: var(--color-text); text-decoration: none; }
+  .toc-list ol { padding-left: var(--sp-toc-left); }
+
+  /* 执行摘要 */
+  .executive-summary {
+    background: var(--color-surface);
+    border-left: var(--bw-accent) solid var(--color-primary);
+    padding: var(--sp-pre);
+    margin: var(--sp-table);
+  }
+  .executive-summary h2 { margin-top: 0; }
+  .summary-badge {
+    font-family: var(--ff-code);
+    font-size: var(--fs-code);
+    color: var(--color-muted);
+    text-indent: 0;
+  }
+
+  .note {
+    font-family: var(--ff-body);
+    font-size: var(--fs-table);
+    color: var(--color-muted);
+    text-indent: var(--sp-indent);
+    margin: var(--sp-li);
+  }
+</style>
+</head>
+<body>
+
+<section role="cover">
+  <div class="cover-wrap">
+    <p class="cover-cat">项目成果汇报</p>
+    <p class="cover-main">树莓派智能桌宠<br>与语音交互平衡车系统</p>
+    <p class="cover-sub">语音控车 · 示教再现 · 一体化交互</p>
+    <div class="cover-rule"></div>
+    <div class="cover-meta">
+      <p>姓　　名：______________________</p>
+      <p>学　　号：______________________</p>
+      <p>专　　业：______________________</p>
+      <p>指导教师：______________________</p>
+      <p>完成日期：2026 年 10 月</p>
+    </div>
+  </div>
+</section>
+
+<section role="cover">
+  <nav class="doc-toc" aria-label="文档目录">
+    <p class="toc-title">目　　录</p>
+    <ol class="toc-list">
+      <li><a href="#section-1">摘要</a></li>
+      <li><a href="#section-2">一、项目背景与目标</a></li>
+      <li><a href="#section-3">二、系统设计</a></li>
+      <li><a href="#section-4">三、硬件组成</a></li>
+      <li><a href="#section-5">四、功能实现</a>
+        <ol>
+          <li><a href="#section-5-1">4.1 语音对话与长期记忆</a></li>
+          <li><a href="#section-5-2">4.2 语音控车与示教再现</a></li>
+          <li><a href="#section-5-3">4.3 触摸屏与温控风扇</a></li>
+        </ol>
+      </li>
+      <li><a href="#section-6">五、关键问题与解决</a></li>
+      <li><a href="#section-7">六、测试结果</a></li>
+      <li><a href="#section-8">七、总结与不足</a></li>
+    </ol>
+  </nav>
+</section>
+
+<section role="body" data-page-restart="1">
+
+<h1>树莓派智能桌宠与语音交互平衡车系统</h1>
+
+<div class="executive-summary">
+  <h2 id="section-1">摘要</h2>
+  <p class="summary-badge">Executive Summary</p>
+  <p>本项目以树莓派 4B 为上位机、STM32F103 平衡车为下位机，通过蓝牙串口把语音交互与触摸屏操控接入平衡车。系统实现三项能力：说出"前进""右转九十度"即可开车，并能"教一遍就自己重走"；接入大语言模型并注入实时天气，能回答"现在几度""我在做什么项目"；一块触摸屏把对话、天气、遥控、语音控车与系统监控集成在同一界面。</p>
+  <p>实测转向平均绝对误差 3.3°，90° 转向耗时 1.6 秒；带实况的问答响应 1.0 秒；风扇满占空比采样 220 次无一次欠压。硬件未做破坏性改动，车端固件改动集中于单个文件，可回退。</p>
+</div>
+
+<h2 id="section-2">一、项目背景与目标</h2>
+
+<p>平衡车是常见的嵌入式课程载体，但多数实现停留在"能站住、能用手机 APP 遥控"的层次。手机遥控要一手持机、一手扶车，双手被完全占满。</p>
+
+<p>本项目把交互方式从"手指"换成"语言"，设定四个目标：语音控车、双向通信（姿态与航向回传）、示教再现、一体化交互。最后一点是与多数语音小车的区别——它们仍依赖电脑运行识别程序，本项目把识别、对话、界面渲染全部跑在树莓派上，开机即用。</p>
+
+<h2 id="section-3">二、系统设计</h2>
+
+<p>系统采用上下位机架构：树莓派负责"听懂"和"呈现"，平衡车负责"走准"。数据流向如下：</p>
+
+<pre>        ┌──────────── 树莓派 4B（上位机）────────────┐
+        │  麦克风 → VAD 切句 → sherpa-onnx 识别       │
+        │              ↓                              │
+        │  意图解析（本地规则）  ←→  DeepSeek 大模型   │
+        │              ↓                              │
+        │  动作白名单 → 蓝牙 SPP 下发                 │
+        │              ↑                              │
+        │  触摸屏 UI（6 个功能页）   遥测回传          │
+        └──────────────┼──────────────────────────────┘
+                       │ 蓝牙串口 9600 8N1
+        ┌──────────────┼──────────────────────────────┐
+        │              ↓                              │
+        │  HC-04 → USART2 → 指令解析 → 串级 PID        │
+        │                     ↑                       │
+        │  MPU6050 航向积分 + 转向闭环 + 跌倒锁         │
+        └──────────── 平衡车（下位机）────────────────┘</pre>
+
+<p>最关键的设计决定是<strong>把转向闭环放在车端</strong>：树莓派只下发意图，不参与控制。因为蓝牙有 50～100 ms 延迟且会抖动，若由上位机闭环，每拍控制量都带着延迟进入系统，车会来回振荡；把闭环放到被控对象一侧，延迟就从"控制回路的一部分"退化成"命令何时开始"，不影响稳定性。</p>
+
+<p>协议沿用车端原有的手机 APP 格式，车端不必为语音功能改动：</p>
+
+<table>
+  <thead>
+    <tr><th>方向</th><th>报文</th><th>含义</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>上位机 → 车</td><td>[go,速度,转向]</td><td>例如 [go,1.40,0] 前进</td></tr>
+    <tr><td>上位机 → 车</td><td>[turn,角度]</td><td>例如 [turn,90] 右转 90°</td></tr>
+    <tr><td>上位机 → 车</td><td>[stop]</td><td>立即停车</td></tr>
+    <tr><td>车 → 上位机</td><td>[s,俯仰×10,速度×100,航向,状态]</td><td>20 Hz 遥测</td></tr>
+  </tbody>
+</table>
+
+<p>状态位 = 运行中×1 + 转向中×2 + 跌倒锁定×4 + 陀螺仪异常×8。设状态位是为了远程区分故障——"车倒了被锁死"和"转向没收敛"外部现象几乎一样，没有它只能靠猜。</p>
+
+<h2 id="section-4">三、硬件组成</h2>
+
+<table>
+  <thead>
+    <tr><th>模块</th><th>型号 / 规格</th><th>作用</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>上位机</td><td>树莓派 4B（8 GB）</td><td>语音识别、大模型对话、界面渲染</td></tr>
+    <tr><td>下位机</td><td>STM32F103C8T6</td><td>姿态解算、串级 PID、电机控制</td></tr>
+    <tr><td>姿态传感器</td><td>MPU6050</td><td>取 Z 轴角速度做航向积分</td></tr>
+    <tr><td>编码器</td><td>双霍尔 44 线</td><td>速度与里程反馈</td></tr>
+    <tr><td>电机驱动</td><td>TB6612</td><td>双路电机 PWM 驱动</td></tr>
+    <tr><td>蓝牙模块</td><td>HC-04</td><td>经典蓝牙 SPP 透传，免驱动</td></tr>
+    <tr><td>显示屏</td><td>ST7789，240×320，SPI 触摸</td><td>一体化交互界面</td></tr>
+    <tr><td>音频</td><td>USB 麦克风 + 3.5 mm 音箱</td><td>语音输入输出</td></tr>
+    <tr><td>散热</td><td>TB6612 + 5 V 小马达</td><td>CPU 温控风扇</td></tr>
+  </tbody>
+</table>
+
+<p>接线未做破坏性改动：蓝牙原本就接在 USART2 上供手机 APP 使用，树莓派接上去后对车而言与手机完全等价。</p>
+
+<h2 id="section-5">四、功能实现</h2>
+
+<p>功能分为对话与记忆、控车与示教、触屏与散热三块，下面依次说明。</p>
+
+<h3 id="section-5-1">4.1 语音对话与长期记忆</h3>
+
+<p>对话链路为：麦克风 → VAD 切句 → sherpa-onnx 离线识别 → 意图判断 → 大模型生成 → TTS 播报。识别不依赖网络；针对控车准备了 20 个热词（前进、右转、九十度、记住这条路等），提升短指令识别率。</p>
+
+<p>大模型接入 DeepSeek，但接口本身并不联网，最初问"今天天气"要么答不知道、要么编一个错误答案。解决办法是<strong>提问前先把实时数据注入提示词</strong>：open-meteo 取实况与三日预报（缓存 5 分钟），ip-api 取城市定位（缓存 1 小时），并要求"不知道就直说"。修复后可答"阴天，21 度，风 6 米每秒，降雨概率一成八"。另外分快答与讲解两档：日常问答限 40 字、0.9 秒；讲解类 100～180 字并附例子、1.5 秒。</p>
+
+<p>长期记忆把用户陈述存入本地 JSON，重启后仍在。两个细节：<strong>区分陈述与疑问</strong>——"我叫张三"要记，"我叫什么"绝不能把"什么"当名字；<strong>清除记忆走本地规则</strong>，不经过模型，1 毫秒完成。</p>
+
+<h3 id="section-5-2">4.2 语音控车与示教再现</h3>
+
+<p>意图解析本地规则优先：命中规则表直接执行，解析不出才转大模型兜底。</p>
+
+<p><strong>示教再现</strong>是最有特色的功能：说"记住这条路"开始记录，指挥车走一遍，说"记好了"结束，之后说"走一遍"车就自动复现整条路径。路线以动作序列存于本地，可命名、可存多条。</p>
+
+<p>安全上有三道约束：<strong>动作白名单</strong>——大模型只能从 8 个动作里挑一个，不允许输出任何速度或 PWM 数值；<strong>指令自带时长</strong>——"前进"默认 2 秒，"一直走"上限 8 秒；<strong>跌倒锁</strong>——倾角超 ±50° 后锁死，语音无法拉起，必须人工按键复位。</p>
+
+<h3 id="section-5-3">4.3 触摸屏与温控风扇</h3>
+
+<p>屏幕为 240×320 SPI 触摸屏，用应用栈管理页面，主页以磁贴进入对话、天气、温湿度、遥控、语音控车、系统六页。界面层只负责"看"和"判断点到哪"，数据由逻辑层传入，因此<strong>界面代码能在电脑上直接渲染成图片</strong>，不接硬件就能调排版。</p>
+
+<p>树莓派满载时温度升到 45 ℃ 以上，因此加装一路 PWM 风扇：TB6612 驱动、GPIO12 输出硬件 PWM。40 ℃ 起转、70 ℃ 到上限，线性调速并带 3 ℃ 迟滞；启动采用<strong>软启动</strong>，6 秒分 200 步爬到目标占空比，把浪涌摊平；运行中每秒读欠压标志，检测到即自动降上限。系统页第一行是风扇开关，点击在「自动 → 手动开 → 手动关」之间循环；屏幕与风扇服务分属两个用户，不能争抢 GPIO，故通过状态文件通信，切换响应 200～260 毫秒。</p>
+
+<h2 id="section-6">五、关键问题与解决</h2>
+
+<p>四个有代表性的问题，每个都走完"现象 → 根因 → 修复"的闭环：</p>
+
+<table>
+  <thead>
+    <tr><th>问题</th><th>现象</th><th>根因</th><th>修复</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>车抽搐两下就停机</td><td>说"转一圈"，车抖两下停住，8 秒内航向暴涨 3410°</td><td>陀螺仪零偏标定无静止检测，偏差使航向持续累加，闭环误判"已到位"</td><td>标定改 6 组 × 100 次，组内极差达标才接受；超限置"陀螺仪异常"位并拒绝转向</td></tr>
+    <tr><td>转圈一顿一顿</td><td>转向走走停停</td><td>差速量被除以 2，与平衡环修正处于同一量级，每次修正把转向顶回去</td><td>差速全量叠加、设最小差速、临近目标按角度减速，90° 用时 1.6 秒</td></tr>
+    <tr><td>掉线仍显示"已连接"</td><td>车断电后屏幕仍绿色"已连接"</td><td>状态只在连接成功时写一次；断开是事件，界面读的是变量</td><td>改用遥测新鲜度判活，3 秒无数据判掉线，显示"掉线"并 8 秒自动重连</td></tr>
+    <tr><td>风扇一跑就重启</td><td>启动瞬间重启三次，SD 卡写坏一个文件</td><td>2 A 电源余量不足，浪涌使电压跌破 4.63 V 阈值</td><td>换官方 5.1 V / 3 A 电源，70% 与 100% 各采样 220 次，欠压恒为 0</td></tr>
+  </tbody>
+</table>
+
+<p>这四类分别对应<strong>标定不可信、控制量量级失配、状态显示脱离证据、供电余量不足</strong>，都是只有真实硬件才会暴露的错误。附带一个排查技巧：get_throttled 的低 4 位表示"此刻"、高 4 位表示"曾经"，后者只有完全断电才清零，故判断新电源必须先拔电再上电，看到 0x0 才算基线。</p>
+
+<h2 id="section-7">六、测试结果</h2>
+
+<p>测试均为实机记录，未做理论推算：</p>
+
+<table>
+  <thead>
+    <tr><th>测试项</th><th>条件</th><th>结果</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>转向精度</td><td>瓷砖地面、满电，每次转完静止 1 秒</td><td>右 90°：+91.0°（1.6 s）；左 90°：−84.0°（3.4 s）；右 45°：+42.0°（1.4 s）；平均绝对误差 <span class="key">3.3°</span></td></tr>
+    <tr><td>对话响应</td><td>含实况注入</td><td>天气问答 1038 ms；快答 28 字 860 ms；讲解 142 字 1501 ms；本地规则 1 ms</td></tr>
+    <tr><td>风扇供电</td><td>软启动 6 s 后保持 6 s</td><td>70% 与 100% 各采样 220 次，欠压 <span class="key">0</span> 次</td></tr>
+    <tr><td>模式切换</td><td>屏幕点击</td><td>200～260 ms，界面 0.7 秒内刷新</td></tr>
+  </tbody>
+</table>
+
+<p>转向误差来源已定位：陀螺仪零偏约 1.2 °/s，转 2 秒累积 2.4°，故这 ±6° 中大部分不是"转不准"而是"测不准"；引入在线零偏跟踪后可压到 ±2°。</p>
+
+<h2 id="section-8">七、总结与不足</h2>
+
+<p>项目完成了从"能站住的平衡车"到"能听懂话的机器人"的改造，核心工作有三处：<strong>架构上</strong>把转向闭环放在车端，使蓝牙延迟不再影响稳定性；<strong>交互上</strong>把语音、触屏、对话助手整合到一台树莓派，脱离电脑依赖；<strong>工程上</strong>用状态位、遥测新鲜度、欠压标志这类"证据型"设计，让故障可观测、可定位。</p>
+
+<p>仍存在四点不足：前进距离是开环的，需编码器里程做位置控制；命令词识别率与端到端延迟尚未定量测量；转向误差仍受零偏限制；视觉跟随尚未接入，是下一步投入产出比最高的方向。</p>
+
+</section>
+
+</body>
+</html>

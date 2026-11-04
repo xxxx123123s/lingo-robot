@@ -1,0 +1,31 @@
+import numpy as np
+
+# ============ 拓展任务2-1 【§-01】 19×19 围棋棋盘 ============
+go_board = np.zeros((19, 19), dtype=int)          # 零棋盘：0 = 空位
+
+# ① 切片批量赋值：第3行、第15行、第7列 全部赋值为 2（辅助线）
+go_board[3:4, :] = 2        # 第3行（下标从0开始）
+go_board[15:16, :] = 2      # 第15行
+go_board[:, 7] = 2          # 第7列
+
+print("① 切片赋值后的棋盘（0=空位，2=辅助线）：")
+print(go_board)
+
+# ② 四个角落坐标赋黑子数值 1
+go_board[0, 0] = 1
+go_board[0, 18] = 1
+go_board[18, 0] = 1
+go_board[18, 18] = 1
+
+print("\n② 四角落黑子后的棋盘：")
+print(go_board)
+
+# ③ 统计黑子、辅助线格子数量
+black_stones = np.sum(go_board == 1)
+line_cells = np.sum(go_board == 2)
+
+# ④ 输出业务报告（开头标记与讲义一致）
+print()
+print("【§-01】棋盘统计报告")
+print(f"黑子（值=1）数量：{black_stones}")
+print(f"辅助线格子（值=2）数量：{line_cells}")

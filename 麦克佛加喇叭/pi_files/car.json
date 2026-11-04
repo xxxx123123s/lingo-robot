@@ -1,0 +1,14 @@
+{
+  "mac": "04:25:12:25:01:48",
+  "channel": 1,
+  "port": "/dev/rfcomm0",
+  "baud": 9600,
+  "speed": 1.4,
+  "speed_step": 0.4,
+  "speed_min": 0.5,
+  "speed_max": 3.2,
+  "drive_seconds": 2.0,
+  "hold_max": 8.0,
+  "turn_timeout": 12.0,
+  "llm_json": "/home/pi/llm.json"
+}

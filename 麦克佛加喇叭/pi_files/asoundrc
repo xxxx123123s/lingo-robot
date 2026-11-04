@@ -1,0 +1,11 @@
+# ALSA 默认设备：麦克风走 USB 声卡(card 3)，播放走耳机口(card 2)
+pcm.!default {
+    type asym
+    playback.pcm "plughw:2,0"
+    capture.pcm  "plughw:3,0"
+}
+
+ctl.!default {
+    type hw
+    card 2
+}

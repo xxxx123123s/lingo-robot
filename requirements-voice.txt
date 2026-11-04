@@ -1,0 +1,11 @@
+# 语音对话依赖（在树莓派 venv 里安装）
+#
+#   sudo apt install -y alsa-utils mpg123 wget unzip
+#   python3 -m venv --system-site-packages .venv
+#   source .venv/bin/activate
+#   pip install -r requirements-voice.txt
+#
+# Vosk 中文模型不在这里，需单独下载：
+#   https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip
+vosk>=0.3.45
+edge-tts>=6.1.0
