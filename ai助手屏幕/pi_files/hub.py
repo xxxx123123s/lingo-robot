@@ -1469,8 +1469,14 @@ class DriveApp(App):
     title = "遥控"
 
     JOY_DEAD = 0.10        # 摇杆死区：归一化幅度小于它当中立，滤掉手指微抖
-    JOY_HZ = 10.0          # 下发频率。必须持续发 —— 车端摇杆模式看门狗是 500ms，
-                           # 手指按住不动（没有 move 事件）时也要靠这条定时包喂住
+    # 喂狗频率。车端摇杆看门狗是 500ms，333ms 一包正好一倍半余量。
+    # ★为什么从 10Hz 压到 3Hz：9600 波特只有 ~960 字节/秒，车端遥测 10Hz
+    #   就先吃掉 40%。摇杆包 21 字节，10Hz 再吃 22%、拖动瞬时到 20Hz 吃 44%，
+    #   两条一叠就把链路顶到饱和 —— HC-04 直接自己断开重连，表现是
+    #   "推着推着车就不动了"（11:49 那次掉线就是这么来的）。3Hz 只占 6%。
+    JOY_HZ = 3.0
+    MOVE_GAP = 0.10        # 拖动时的发送上限（10Hz）：指令变了立刻发，但不许更密
+    ZERO_PACKETS = 3       # 回中后补发几包就闭嘴，别拿空包空占带宽
     HOLD_MAX = 12.0        # 连续推的兜底：万一抬起事件丢了，车不能一直跑
 
     def __init__(self, hub):
@@ -1485,6 +1491,7 @@ class DriveApp(App):
         self.joy_on = False
         self._t_send = 0.0
         self._last = (0, 0)          # 上一次真正发出去的 (LV, RH)，用来判重
+        self._zero_sent = 0          # 回中之后已经补发了几包
         self.down_xy = None
 
     def enter(self):
@@ -1545,10 +1552,11 @@ class DriveApp(App):
             return
         self.jx, self.jy = hubui.joy_norm(x, y)
         self._dead()
-        # 拖动时只要指令变了就立刻发（最快 20Hz），否则摇杆会有一拍黏滞感；
-        # 但发得太密会挤占 9600 波特的带宽（遥测还要 10Hz），所以限 50ms 一次。
+        # 拖动时只要指令变了就立刻发（最快 10Hz），否则摇杆会有一拍黏滞感；
+        # 但发得太密会挤占 9600 波特的带宽（遥测还要 10Hz），所以限 100ms 一次。
         if self._cmd() != self._last:
-            self._emit(min_gap=0.05)
+            self._zero_sent = 0
+            self._emit(min_gap=self.MOVE_GAP)
 
     def tick(self, now):
         if not self.joy_on:
@@ -1556,8 +1564,15 @@ class DriveApp(App):
         if now - self.t_press > self.HOLD_MAX:
             self._halt(f"连续推了 {self.HOLD_MAX:.0f} 秒，已自动停车，需重新推")
             return
-        # 手指按住不动时没有 move 事件，仍要按 10Hz 续命 ——
-        # 车端摇杆看门狗是 500ms，断包就停车
+        # 手指按住不动时没有 move 事件，仍要按 JOY_HZ 续命 ——
+        # 车端摇杆看门狗 500ms，断包就停车。
+        if self._cmd() == (0, 0):
+            # 已经回中：补几包让车端"松杆清积分"的边沿稳定触发，之后就别再占了
+            if self._zero_sent >= self.ZERO_PACKETS:
+                return
+            self._zero_sent += 1
+        else:
+            self._zero_sent = 0
         self._emit(min_gap=1.0 / self.JOY_HZ)
 
     def on_down(self, region):
@@ -1582,6 +1597,7 @@ class DriveApp(App):
             return
         if region == "joy":
             self.joy_on = True
+            self._zero_sent = 0
             xy = self.down_xy or hubui.JOY_C
             self.jx, self.jy = hubui.joy_norm(xy[0], xy[1])
             self._dead()
