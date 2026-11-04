@@ -25,8 +25,13 @@
   ★本轮标定：加阻尼前实测振荡在 0 ~ -7° 之间，中心在 -3.5°（不是 0），
     说明平衡点整体偏低 3.5°。因为 Angle = AngleRaw - OFFSET，
     要让中心抬高 3.5°，就要把 OFFSET 减掉 3.5：5.0 - 3.5 = 1.5。
-    改完振荡应变成 -3.5 ~ +3.5，关于 0 对称*/
-#define ANGLE_OFFSET 1.5f
+
+  ★二轮标定（12:50）：车稳稳站住时遥测仍是 +1.0 左右 —— 也就是说稳态
+    Angle 停在 +1 而不是 0，等于角度环一直在跟一个偏了 1° 的目标较劲
+    （表现为极慢的前后蠕动）。把 OFFSET 加 1.0 搬到真实平衡点：
+    1.5 + 1.0 = 2.5。姿态不变，只是读数归零。
+    不想再烧固件时用 [ofs,±度] 在线微调（正数让读数变小），断电即失效*/
+#define ANGLE_OFFSET 2.5f
 
 /*编码器计数方向。正常情况都是 +1.0f，只有实测发现符号反了才改（判定方法见中断里速度换算处）。
   分成左右两个，是为了能单独处理"两个轮子符号相反、aveSpeed 相互抵消"的情况*/
@@ -682,6 +687,23 @@ int main(void)
 				  而两轮车立着上电本来就容易动，越标越歪，形成死循环。
 				  现在可以先把车放平，再发一条 [cal] 重标，不用断电。*/
 				GzCalReq = 1;
+			}
+			else if (strcmp(Tag, "ofs") == 0)			//[ofs,角度] 在线微调角度零点（°）
+			{
+				/*平衡点零位由重心位置、电池位置、传感器安装角共同决定，
+				  改一次宏就要烧一次固件，实车标太慢。这条命令直接改
+				  AngleOfsLearn（和自动校准同一个量），正数让读数变小。
+				  例：站住时显示 +1.2，发 [ofs,1.2]，再读就是 0。
+				  只存在 RAM，断电回到 ANGLE_OFFSET。*/
+				char *O = strtok(NULL, ",");
+				float d = (O != NULL) ? atof(O) : 0.0f;
+
+				if (d >  10.0f) d =  10.0f;
+				if (d < -10.0f) d = -10.0f;
+
+				AngleOfsLearn += d;
+				if (AngleOfsLearn >  AUTOCAL_LEARN_MAX) AngleOfsLearn =  AUTOCAL_LEARN_MAX;
+				if (AngleOfsLearn < -AUTOCAL_LEARN_MAX) AngleOfsLearn = -AUTOCAL_LEARN_MAX;
 			}
 			else if (strcmp(Tag, "run") == 0)			//[run,1] / [run,0] 远程启停
 			{
