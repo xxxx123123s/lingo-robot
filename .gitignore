@@ -19,6 +19,7 @@ artifacts/
 **/Objects/
 **/Listings/
 **/build/
+build_chk.log
 *.o
 *.d
 *.crf

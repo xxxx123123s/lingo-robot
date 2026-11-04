@@ -24,6 +24,7 @@ SCRIPT = Path(os.environ.get("PETBOT_VISION", "/home/pi/scripts/vision_service.p
 CMD_FILE = Path(os.environ.get("PETBOT_VISION_CMD", "/tmp/vision.cmd"))
 PID_FILE = Path("/tmp/vision.pid")
 LOG_FILE = Path("/tmp/vision.log")
+STREAM_PORT = int(os.environ.get("PETBOT_VISION_PORT", "8099"))  # 电脑预览端口
 PY = sys.executable or "python3"
 
 # 顺序有意义：先判"关掉手势"，否则"关掉手势停车"会被"手势停车"抢走
@@ -177,7 +178,10 @@ def gesture_on() -> str:
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(LOG_FILE, "ab") as log:
         p = subprocess.Popen(
-            [PY, str(SCRIPT), "gesture", "--cmd", str(CMD_FILE)],
+            # ★必须带 --stream，否则预览端口不开，浏览器连不上 8099。
+            # 之前漏了这条，提示里写着"电脑看 pi.local:8099"却打不开。
+            [PY, str(SCRIPT), "gesture", "--cmd", str(CMD_FILE),
+             "--stream", str(STREAM_PORT)],
             stdout=log, stderr=log, stdin=subprocess.DEVNULL,
             start_new_session=True,
         )

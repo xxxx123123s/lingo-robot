@@ -94,33 +94,189 @@ def log(msg: str) -> None:
 # 为什么用 MJPEG 而不是 WebRTC/HLS：浏览器原生支持 multipart/x-mixed-replace，
 # 一行 <img> 就完事，不用装任何东西，也不用在电脑上跑客户端。
 
+STREAM_W = 480          # 推流长边。640x480 全尺寸编码又慢又糊（网络也吃），
+                        # 480 宽在浏览器里放大到 960 看完全够，编码量只有 56%
+JPEG_Q = 65             # 预览画质。70→65 几乎看不出差别，体积再小一成
+_ENC_MIN_GAP = 0.0      # 编码线程最小间隔（秒）。0 = 跟着检测帧率走
+
+
+class _Snap:
+    """一帧的判定快照。给编码线程用，避免它去读正在被改写的 detector。"""
+
+    __slots__ = ("mask", "contour", "ratio", "min_ratio", "compact", "defects",
+                 "fist_compact", "fist_defects", "act", "fired", "fps")
+
+    def __init__(self, det, act, fired, fps=0.0):
+        # mask / contour 每次 update 都是新对象，直接拿引用安全（不会被原地改）
+        self.mask = det.mask
+        self.contour = det.contour
+        self.ratio = det.ratio
+        self.min_ratio = det.min_ratio
+        self.compact = det.compact
+        self.defects = det.defects
+        self.fist_compact = det.fist_compact
+        self.fist_defects = det.fist_defects
+        self.act = act
+        self.fired = fired
+        self.fps = fps
+
+
 class _Live:
-    """最新一帧 + 观众数。没人看就不编码，省 CPU。"""
+    """最新一帧 + 观众数。没人看就不编码，编码放独立线程。
+
+    为什么非要把编码挪出去：原来检测、标注、JPEG 编码全在一个线程里，
+    Pi 4 上单核跑满（实测 CPU 99%），一帧 80ms，推流只有 12fps —— 手上
+    的动作看着一顿一顿。而 Pi 4 有 4 个核，cv2 的编码会释放 GIL，所以
+    分到第二个线程是真的并行，不是假的。挪完主循环只剩检测，帧率回到
+    检测本身的极限。
+    """
 
     def __init__(self) -> None:
-        self.lock = threading.Lock()
+        self.cond = threading.Condition()
+        self.pending = None          # 待编码的最新帧（只保留最后一帧，旧的直接丢）
         self.jpeg = b""
         self.seq = 0
         self.clients = 0
+        self.dropped = 0             # 编码来不及而丢掉的帧数，用来判断是不是编码瓶颈
+        self._enc_th = None
 
-    def publish(self, jpg: bytes) -> None:
-        with self.lock:
-            self.jpeg = jpg
-            self.seq += 1
+    def start_encoder(self) -> None:
+        if self._enc_th is not None:
+            return
+        self._enc_th = threading.Thread(target=self._encode_loop,
+                                        name="mjpeg-enc", daemon=True)
+        self._enc_th.start()
+
+    def offer(self, frame, snap: "_Snap") -> None:
+        """主循环每帧调一次，立刻返回。没人看时什么也不做。"""
+        self.start_encoder()
+        with self.cond:
+            if self.clients <= 0:
+                self.pending = None
+                return
+            if self.pending is not None:
+                self.dropped += 1        # 上一帧还没编完，这帧作废（永远只发最新）
+            self.pending = (frame, snap)
+            self.cond.notify()
+
+    def _encode_loop(self) -> None:
+        while True:
+            with self.cond:
+                while self.pending is None:
+                    self.cond.wait(0.5)
+                frame, snap = self.pending
+                self.pending = None
+            try:
+                jpg = _encode_snapshot(frame, snap)
+            except Exception as exc:                      # noqa: BLE001
+                log(f"预览编码失败：{type(exc).__name__}: {exc}")
+                continue
+            if jpg:
+                with self.cond:
+                    self.jpeg = jpg
+                    self.seq += 1
+                    self.cond.notify_all()
 
     def wait(self, last: int, timeout: float = 2.0):
-        t0 = time.time()
-        while time.time() - t0 < timeout:
-            with self.lock:
-                # 空帧不发：浏览器刚连上时还没出第一帧，发个长度为 0 的
-                # multipart 会让某些浏览器把<img>当成坏图
-                if self.seq != last and self.jpeg:
-                    return self.jpeg, self.seq
-            time.sleep(0.03)
-        return None, last
+        """等下一帧。用条件变量而不是 sleep 轮询 —— 轮询最多会多出 30ms
+        的抖动，帧间隔一不均匀，观感上就是"卡"。"""
+        with self.cond:
+            self.cond.wait_for(
+                lambda: self.seq != last and bool(self.jpeg), timeout)
+            if self.seq != last and self.jpeg:
+                return self.jpeg, self.seq
+            return None, last
 
 
 LIVE = _Live()
+
+
+def _encode_snapshot(frame, snap: "_Snap"):
+    """缩放 → 标注 → JPEG。全部在编码线程里跑。"""
+    h, w = frame.shape[:2]
+    if w > STREAM_W:
+        nw = STREAM_W
+        nh = max(1, int(round(h * STREAM_W / float(w))))
+        frame = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
+    img = _annotate(frame, snap)
+    ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_Q])
+    return buf.tobytes() if ok else None
+
+
+class _FaceWorker:
+    """人脸框检测的独立线程。
+
+    为什么非拆不可：实测 YuNet 跑一帧 640x480 要 **245ms**，而它只需要
+    0.7 秒检一次。放在主循环里同步做，就是每 0.7 秒把整个循环卡住 245ms
+    —— 观感上是"隔一会儿顿一下"，比帧率低本身更难受。
+
+    拆出去之后主循环永远不等它，拿到的是最近一次的脸框（最多晚一秒，
+    而人站着不动，一秒前的框完全够用）。顺便把检脸分辨率降到 320 宽，
+    耗时降到约 1/4，另一个核基本无感。
+    """
+
+    SCALE_W = 320          # 检脸用 320 宽足够，坐标最后再乘回去
+
+    def __init__(self, model, interval: float = 0.7) -> None:
+        self.model = model
+        self.interval = interval
+        self.faces: list = []
+        self.err = None
+        self.calls = 0
+        self._frame = None
+        self._t_take = 0.0
+        self._det = None
+        self._dims = None
+        self._cond = threading.Condition()
+        threading.Thread(target=self._loop, name="face-det", daemon=True).start()
+
+    def offer(self, frame) -> None:
+        """主循环每帧调一次，绝大多数时候立即返回。"""
+        if time.time() - self._t_take < self.interval:
+            return
+        with self._cond:
+            if self._frame is not None:        # 上一帧还没取走，不排队
+                return
+            self._frame = frame
+            self._cond.notify()
+
+    def _loop(self) -> None:
+        while True:
+            with self._cond:
+                while self._frame is None:
+                    self._cond.wait(0.5)
+                frame = self._frame
+                self._frame = None
+            self._t_take = time.time()
+            try:
+                self._detect(frame)
+            except Exception as exc:                     # noqa: BLE001
+                # 模型缺失不该让手势整个停摆，退化成"不排除脸"
+                self.err = exc
+            time.sleep(self.interval)
+
+    def _detect(self, frame) -> None:
+        h, w = frame.shape[:2]
+        if w > self.SCALE_W:
+            small = cv2.resize(
+                frame, (self.SCALE_W, max(1, int(round(h * self.SCALE_W / w)))),
+                interpolation=cv2.INTER_AREA)
+        else:
+            small = frame
+        sh, sw = small.shape[:2]
+        if self._det is None or self._dims != (sw, sh):
+            self._det = FaceDetector(self.model, sw, sh, 0.5)
+            self._dims = (sw, sh)
+        k = w / float(sw)
+        out = []
+        for f in self._det.detect(small):
+            v = f.tolist()
+            for i in range(4):               # x, y, w, h 换算回原图坐标
+                v[i] = v[i] * k
+            out.append(v)
+        self.faces = out                     # 原子替换：主循环要么读旧的、要么读新的
+        self.calls += 1
+        self.err = None
 
 _PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>手势预览</title>
@@ -150,8 +306,17 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type",
                              "multipart/x-mixed-replace; boundary=frame")
             self.send_header("Cache-Control", "no-store")
+            # ★关掉 Nagle：21KB 的 JPEG 被 TCP 拆成多段时，Nagle 会攒着不发，
+            # 等上一个包 ACK 才走 —— 局域网里也能攒出几十毫秒，一帧一卡。
+            self.send_header("Connection", "keep-alive")
             self.end_headers()
-            LIVE.clients += 1
+            try:
+                self.connection.setsockopt(socket.IPPROTO_TCP,
+                                           socket.TCP_NODELAY, 1)
+            except Exception:                             # noqa: BLE001
+                pass
+            with LIVE.cond:
+                LIVE.clients += 1
             seq = -1
             try:
                 while True:
@@ -163,10 +328,13 @@ class _Handler(BaseHTTPRequestHandler):
                     self.wfile.write(b"Content-Length: %d\r\n\r\n" % len(jpg))
                     self.wfile.write(jpg)
                     self.wfile.write(b"\r\n")
+                    self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass                           # 浏览器关页面，正常
             finally:
-                LIVE.clients -= 1
+                with LIVE.cond:
+                    LIVE.clients -= 1
+                    LIVE.cond.notify_all()
             return
 
         self.send_response(200)
@@ -202,40 +370,49 @@ def start_stream(port: int) -> bool:
     return True
 
 
-def _annotate(frame, det, act: str | None, fired: int):
-    """把判定结果画在画面上。只用 ASCII —— cv2.putText 画不了中文。"""
+def _annotate(frame, s: "_Snap"):
+    """把判定结果画在画面上。只用 ASCII —— cv2.putText 画不了中文。
+
+    s 是 _Snap 快照，不是活的 detector：编码在另一个线程跑，读活的
+    detector 会读到正在被改写的中间状态（数字和画面对不上帧）。
+    """
     img = frame.copy()
     h, w = img.shape[:2]
+    k = w / 640.0                    # 画到 480 宽时字号等比缩小，不然字挤成一团
+    fs = lambda v: max(0.32, v * k)  # noqa: E731
 
-    if det.mask is not None:
-        mh, mw = det.mask.shape[:2]
+    if s.mask is not None:
+        mh, mw = s.mask.shape[:2]
         sc = w / float(max(mw, 1))
-        if det.contour is not None:
-            c = (det.contour.astype(np.float32) * sc).astype(np.int32)
+        if s.contour is not None:
+            c = (s.contour.astype(np.float32) * sc).astype(np.int32)
             cv2.drawContours(img, [c], -1, (0, 210, 0), 2)
         tw, th = w // 4, h // 4
-        thumb = cv2.resize(det.mask, (tw, th))
+        thumb = cv2.resize(s.mask, (tw, th))
         img[h - th - 8:h - 8, w - tw - 8:w - 8] = cv2.cvtColor(
             thumb, cv2.COLOR_GRAY2BGR)
 
-    if act == "forward":
+    if s.act == "forward":
         head, col = "FIST -> FORWARD", (0, 210, 0)
-    elif act == "stop":
+    elif s.act == "stop":
         head, col = "PALM -> STOP", (0, 140, 255)
     else:
         head, col = "no gesture", (190, 190, 190)
 
-    cv2.putText(img, head, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                0.8, col, 2, cv2.LINE_AA)
+    cv2.putText(img, head, (int(10 * k), int(30 * k)),
+                cv2.FONT_HERSHEY_SIMPLEX, fs(0.8), col, 2, cv2.LINE_AA)
     cv2.putText(img, "ratio %.2f (>=%.2f)  compact %.2f  gaps %d" %
-                (det.ratio, det.min_ratio, det.compact, det.defects),
-                (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
+                (s.ratio, s.min_ratio, s.compact, s.defects),
+                (int(10 * k), int(56 * k)), cv2.FONT_HERSHEY_SIMPLEX,
+                fs(0.5), col, 1, cv2.LINE_AA)
     cv2.putText(img, "fist: compact>=%.2f  gaps<=%d" %
-                (det.fist_compact, det.fist_defects),
-                (10, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
-                (160, 160, 160), 1, cv2.LINE_AA)
-    cv2.putText(img, "fired %d" % fired, (10, 96),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1, cv2.LINE_AA)
+                (s.fist_compact, s.fist_defects),
+                (int(10 * k), int(76 * k)), cv2.FONT_HERSHEY_SIMPLEX,
+                fs(0.45), (160, 160, 160), 1, cv2.LINE_AA)
+    # 帧率放在这里：卡的时候一眼能分清是识别慢（fps 低）还是网络慢（fps 正常）
+    cv2.putText(img, "fired %d   %.0f fps" % (s.fired, s.fps),
+                (int(10 * k), int(96 * k)), cv2.FONT_HERSHEY_SIMPLEX,
+                fs(0.45), (160, 160, 160), 1, cv2.LINE_AA)
     return img
 
 
@@ -522,24 +699,77 @@ def write_cmd(path: Path, text: str) -> None:
         log(f"写 {path} 失败：{exc}")
 
 
+def _tune_frame_rate(camera, fps: float) -> str:
+    """把摄像头帧率顶到 fps。返回一句给人看的说明。
+
+    ★「画面有点卡」的真正原因就在这里：室内灯光下自动曝光把曝光时间拉满到
+      66ms，帧率就被钉死在 15fps（ExposureTime=66640us、FrameDuration=66767us
+      都实测出来了）。跟编码、跟协议、跟网络一点关系都没有 —— 摄像头每秒
+      就只给 15 张，后面怎么优化都是 15 张。
+
+    限制帧时长之后 AGC 只会把曝光压到限值，增益不太肯往上走（实测只到 8，
+    画面亮度从 121 掉到 72）。所以再按亮度自己补一次增益：白天不补（不会过曝），
+    夜里补到 110 左右，亮度和 15fps 时基本一致（实测 115）。
+    """
+    p = getattr(camera, "picam", None)          # 只有 CSI 摄像头有这套控制
+    if p is None or fps <= 0:
+        return ""
+    us = int(1e6 / fps)
+    try:
+        p.set_controls({"FrameDurationLimits": (us, us)})
+    except Exception as exc:                    # noqa: BLE001
+        return f"限帧率失败（{exc}），按原来的走"
+    time.sleep(1.0)
+    try:
+        for _ in range(3):
+            camera.read()                       # 把限制生效前的旧帧读掉
+        frame = camera.read()
+        mean = float(frame.mean())
+        gain = float(p.capture_metadata().get("AnalogueGain", 1.0))
+        if 0 < mean < 100:                      # 偏暗才补，亮了会过曝
+            want = min(32.0, gain * (110.0 / mean))
+            p.set_controls({"AnalogueGain": want})
+            time.sleep(0.4)
+            for _ in range(3):
+                camera.read()
+            return (f"帧率顶到 {fps:g}fps（曝光 {us}us，亮度 {mean:.0f}→"
+                    f"{float(camera.read().mean()):.0f}，增益 {want:.1f}）")
+        return f"帧率顶到 {fps:g}fps（亮度 {mean:.0f}，不用补增益）"
+    except Exception as exc:                    # noqa: BLE001
+        return f"帧率顶到 {fps:g}fps（亮度补偿失败：{exc}）"
+
+
 def cmd_gesture(args) -> int:
+    # 分辨率不要动：试过降到 480x360（想省 read 的 42ms），实测帧率反而从
+    # 16.3 掉到 14.9 —— ov5647 在 640x480 是传感器原生 binning 直出，
+    # 480x360 要走 ISP 缩放，pipeline 多一级反而更慢。保持用户给的分辨率。
     camera = open_camera(args.source, args.camera, args.width, args.height)
+    fps_note = _tune_frame_rate(camera, float(getattr(args, "fps", 0) or 0))
+    if fps_note:
+        log(f"预览流畅度：{fps_note}")
     detector = HandDetector(fist_compact=args.fist_compact,
                             open_compact=args.open_compact)
     started = time.time()
     fired = 0
+    fps = 0.0                      # 检测帧率，画在预览角上
+    n_proc = 0
+    fps_t0 = started
     stream = int(getattr(args, "stream", 0) or 0)
     if stream:
         start_stream(stream)
 
     # 人脸框：每 0.7 秒找一次，用来把"脸"从肤色图里排除掉。
-    # 不排除的话，人往前站一点（脸占 17%、实心度 0.75）就正好踩在判定线上，
-    # 站着不动也会被当成"举起手掌"反复发电。找框比判断手势贵得多，
-    # 所以不每帧做；人站着不动，0.7 秒前的框完全够用。
-    face_det = None
-    face_dims = None
+    # 不排除脸的话，人往前站一点（脸占 17%、实心度 0.75）就正好踩在判定线上，
+    # 站着不动也会被当成"举起手掌"反复发电。
+    #
+    # ★但这件事必须放独立线程：实测 YuNet 在 Pi 4 上跑一帧 640x480 要 245ms，
+    #   原来同步做，主循环每 0.7 秒被掐住 245ms —— 推流画面就是"隔一会儿顿
+    #   一下"，比整体帧率低更难受。cv2 检测会释放 GIL，分到第二个核是真并行。
+    face_worker = None
+    if not args.no_face_guard:
+        face_worker = _FaceWorker(args.model)
+    face_warned = False
     faces = []
-    last_face = -10.0
 
     how = ("发蓝牙" if args.mac else
            (f"写 {args.cmd}" if args.cmd else "只打印（加 --mac 或 --cmd 才会生效）"))
@@ -554,19 +784,13 @@ def cmd_gesture(args) -> int:
                 continue
 
             now = time.time()
-            if not args.no_face_guard and now - last_face >= 0.7:
-                last_face = now
-                try:
-                    if face_det is None or face_dims != frame.shape[:2]:
-                        face_det = FaceDetector(args.model, frame.shape[1],
-                                                frame.shape[0], 0.5)
-                        face_dims = frame.shape[:2]
-                    faces = [f.tolist() for f in face_det.detect(frame)]
-                except Exception as exc:                   # noqa: BLE001
-                    faces = []      # 模型缺失不该让手势整个停摆，退化成"不排除脸"
-                    if fired == 0:
-                        log(f"人脸框检测不可用（{type(exc).__name__}: {exc}），"
-                            f"继续跑，只是不排除脸")
+            if face_worker is not None:
+                faces = face_worker.faces          # 永远拿最近一次结果，不等
+                face_worker.offer(frame)           # 内部按 0.7s 节流
+                if face_worker.err is not None and not face_warned:
+                    face_warned = True
+                    log(f"人脸框检测不可用（{type(face_worker.err).__name__}: "
+                        f"{face_worker.err}），继续跑，只是不排除脸")
 
             act = detector.update(frame, faces)
             if act:
@@ -585,21 +809,20 @@ def cmd_gesture(args) -> int:
             elif args.verbose:
                 log(f"  sol={detector.solidity:.2f} ratio={detector.ratio:.2f}")
 
-            # 只在真的有人在看时编码 —— 没人连的时候一帧 JPEG 都不做，
-            # 开了预览也不会拖慢识别（树莓派 4 上 640x480 编码约 4ms/帧）。
-            if stream and LIVE.clients > 0:
-                try:
-                    vis = _annotate(frame, detector, act, fired)
-                    ok, buf = cv2.imencode(
-                        ".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-                    if ok:
-                        LIVE.publish(buf.tobytes())
-                except Exception as exc:                   # noqa: BLE001
-                    if fired == 0:
-                        log(f"预览帧编码失败（{type(exc).__name__}: {exc}），不影响识别")
+            # 只把帧交给编码线程，标注和 JPEG 编码都在那边做。
+            # 没人看时 offer 直接返回，一帧都不编。
+            if stream:
+                n_proc += 1
+                if now - fps_t0 >= 1.0:
+                    fps = n_proc / (now - fps_t0)
+                    n_proc = 0
+                    fps_t0 = now
+                LIVE.offer(frame, _Snap(detector, act, fired, fps))
+            # 不睡：camera.read() 本身就阻塞到下一帧，再睡就是白扔 5ms
+            #（原来是 20ms，占了每帧 1/4 的时间）。
             if args.duration and (time.time() - started) >= args.duration:
                 break
-            time.sleep(0.02)
+            time.sleep(0.001)
     except KeyboardInterrupt:
         log("已退出。")
     finally:
@@ -826,6 +1049,9 @@ def main() -> int:
     p.add_argument("--duration", type=float, default=0, help="跑多少秒后退出，0 为一直跑")
     p.add_argument("--stream", type=int, default=8099,
                    help="在电脑浏览器里看画面（MJPEG 端口，0 = 不开）")
+    p.add_argument("--fps", type=float, default=30.0,
+                   help="顶住摄像头帧率。室内光下自动曝光会把帧率压到 15fps，"
+                        "画面就一顿一顿的；默认顶到 30，0 = 不干预")
     p.set_defaults(func=cmd_gesture)
 
     args = ap.parse_args()
