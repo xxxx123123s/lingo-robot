@@ -405,6 +405,10 @@ def render_drive(v):
     tag, tcol = "运行中", GREEN
     if flags & 4:
         tag, tcol = "跌倒锁定·按Key1解", RED
+    elif flags & 8:
+        # ★这一位以前没人显示，用户只看到"运行中"，可车端正拒绝一切转向，
+        # 表现就是"按键没反应"，完全查不出原因。
+        tag, tcol = "陀螺没标好·断电静止再上电", RED
     elif flags & 2:
         tag, tcol = "转向中", BLUE
     elif not (flags & 1):
@@ -463,7 +467,10 @@ def render_voice(v):
     card(d, (10, 30, 230, 68))
     d.text((16, 36), getattr(v, "tel", ""), font=font(10), fill=MUTED)
     flags = getattr(v, "flags", 0)
-    tag = "转向中" if flags & 2 else ("跌倒锁定" if flags & 4 else ("运行中" if flags & 1 else "待机"))
+    tag = ("陀螺没标好" if flags & 8 else
+           "转向中" if flags & 2 else
+           "跌倒锁定" if flags & 4 else
+           ("运行中" if flags & 1 else "待机"))
     spd = getattr(v, "spd", "")
     d.text((16, 52), f"状态 {tag}" + (f" · 速度档 {spd}" if spd else ""), font=font(10),
            fill=RED if flags & 4 else ACCENT)

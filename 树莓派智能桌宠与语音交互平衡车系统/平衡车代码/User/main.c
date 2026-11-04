@@ -102,6 +102,9 @@
 #define YAW_TIMEOUT_MS  12000u  /* 单次转向最长 12 秒，超时强制收手（防符号错时原地转圈）*/
 #define CMD_TIMEOUT_MS  9000u   /* 这么久没再收到 [go] 就自动停车（防断链飞车）*/
 #define GZ_CAL_N        100     /* 上电用 100 拍（1 秒）标陀螺零偏 */
+#define GZ_CAL_DELAY    200     /* ★先等 2 秒再开始标：上电瞬间电源、电机驱动、
+                                   编码器中断都在抢资源，这一小段数据最脏 */
+#define GZ_CAL_TRIES    3       /* 方差超标就重来，最多试 3 次 */
 
 float AngleA;//角度
 float AngleG;//陀螺仪测角度角度
@@ -196,6 +199,10 @@ float    GzRate = 0;         /* 当前偏航角速度 °/s，给转向 D 项用 
 float    YawRate = 0;        /* 同上，但已经过 YAW_GZ_SIGN 统一成"右转为正" */
 uint8_t  YawMode = 0;        /* 1 = 正在按航向闭环转向 */
 uint8_t  GzBad = 0;          /* 1 = 上电标零偏时车在动，航向不可信 */
+volatile uint8_t GzCalReq = 0;/* 1 = 请求重新标零偏（[cal] 命令 / 长按停车键）。
+                                 为什么需要：零偏标歪了以前只能断电重上电，
+                                 而两轮车立着上电本身就容易动，越标越歪。
+                                 有了这个就能在车放平静止时随时重标。*/
 uint8_t  Fallen = 0;         /* 1 = 摔过，已锁死，等 [run,1] 或 Key1 解锁 */
 uint32_t LastMoveTick = 0;   /* 最后一次收到运动指令的时刻 */
 volatile uint8_t TelFlag = 0;/* 1 = 该发一帧遥测了（中断置位，主循环发送）*/
@@ -669,6 +676,13 @@ int main(void)
 				MoveMode = MOVE_IDLE;
 				LastMoveTick = MsTick;
 			}
+			else if (strcmp(Tag, "cal") == 0)			//[cal] 重新标定陀螺零偏（要求车静止）
+			{
+				/*为什么加这条：零偏标歪时车会拒绝一切转向，以前只能断电重上电，
+				  而两轮车立着上电本来就容易动，越标越歪，形成死循环。
+				  现在可以先把车放平，再发一条 [cal] 重标，不用断电。*/
+				GzCalReq = 1;
+			}
 			else if (strcmp(Tag, "run") == 0)			//[run,1] / [run,0] 远程启停
 			{
 				char *V = strtok(NULL, ",");
@@ -858,15 +872,35 @@ void TIM1_UP_IRQHandler(void)
 
 		/*-------- 偏航（航向）：上电标零偏 + 100Hz 积分 --------*/
 		{
-			static uint8_t gzN = 0;
+			static uint16_t gzDelay = 0;	/*上电后的静默等待拍数*/
+			static uint8_t  gzN = 0;
+			static uint8_t  gzTry = 0;		/*已经重试了几次*/
 			static float   gzSum = 0, gzSum2 = 0;
 
-			if (gzN < GZ_CAL_N)
+			if (GzCalReq)					/*手动重标（[cal] / 长按停车键）*/
 			{
-				/*上电头 1 秒电机不转，正好标 GZ 零偏。同时算标准差判断
-				  "车是不是在动"：有人一边扶着一边上电，标出来的零偏会让
-				  航向每秒漂几十度，转向闭环会把漂移当成真转向、几百毫秒就
-				  "以为"转到位 —— 表现出来就是"车抽两下就停"。*/
+				GzCalReq = 0;
+				gzDelay = 0;
+				gzN = 0;
+				gzTry = 0;
+				gzSum = gzSum2 = 0.0f;
+				GzBad = 0;					/*先解锁，标完再按结果置位*/
+			}
+
+			if (gzDelay < GZ_CAL_DELAY)
+			{
+				/*★上电头 2 秒不采：以前从第 1 拍就开始累加，正好把电机驱动
+				  初始化、电源建立的那点抖动全吃进均值里 —— 标出来的零偏
+				  每次符号都不一样（实测一次 -7°/s、一次 +7°/s），
+				  航向就一直匀速漂，转向闭环把漂移当转向，车根本转不到位。*/
+				gzDelay ++;
+			}
+			else if (gzN < GZ_CAL_N)
+			{
+				/*静止的 1 秒，同时算标准差判断"车是不是真没动"：
+				  有人一边扶着一边上电，标出来的零偏会让航向每秒漂几十度，
+				  转向闭环会把漂移当成真转向、几百毫秒就"以为"到位 ——
+				  表现出来就是"车抽两下就停"。*/
 				gzSum  += (float)GZ;
 				gzSum2 += (float)GZ * (float)GZ;
 				gzN ++;
@@ -874,14 +908,53 @@ void TIM1_UP_IRQHandler(void)
 				{
 					float mean = gzSum / (float)GZ_CAL_N;
 					float var  = gzSum2 / (float)GZ_CAL_N - mean * mean;
-					GzBias = mean;
-					GzBad  = (var > 40000.0f) ? 1 : 0;	/*标准差 >200LSB≈12°/s 判为标歪了*/
-					Yaw    = 0;
+					if (var > 40000.0f && gzTry + 1 < GZ_CAL_TRIES)
+					{
+						/*方差超标 = 这一秒车在动。别急着判失败，重来一次 ——
+						  上电时被人碰一下、线扯一下太常见了，重标一次基本就过。*/
+						gzTry ++;
+						gzN = 0;
+						gzSum = gzSum2 = 0.0f;
+					}
+					else
+					{
+						GzBias = mean;
+						GzBad  = (var > 40000.0f) ? 1 : 0;	/*标准差 >200LSB≈12°/s 判为标歪了*/
+						Yaw    = 0;
+					}
 				}
 			}
 			else
 			{
+				static uint16_t gzGood = 0;	/*连续多少拍"几乎不漂"*/
+
 				GzRate = ((float)GZ - GzBias) / 32768.0f * 2000.0f;	/*°/s*/
+				/*★零偏慢速自适应：不运行时（RunFlag=0，电机不转，正常不会有
+				  持续角速度），把残差以极小系数往零偏里吸。上电标歪的那几度/秒
+				  会在一两分钟内自己消掉，不用用户反复断电。
+				  0.0005 × 100Hz ≈ 20 秒时间常数，手上完全感觉不到；
+				  阈值放到 10°/s —— 实测标歪时残差能到 7~8°/s，卡 3°/s 的话
+				  正好把自己锁在门外，永远修不回来。车真在转是 50°/s 以上，
+				  不会被误吃。*/
+				if (RunFlag == 0 && FABS(GzRate) < 10.0f)
+				{
+					GzBias += 0.0005f * ((float)GZ - GzBias);
+				}
+
+				/*零偏被吸收干净（连续 3 秒漂移都 <1°/s）就自己把 GzBad 解掉。
+				  这一条是整套自愈的最后一环：标歪 → 自适应拉正 → 自动解锁，
+				  用户什么都不用做。没有它，零偏已经准了可标志还挂着，
+				  转向照样被拒。*/
+				if (RunFlag == 0 && FABS(GzRate) < 1.0f)
+				{
+					if (gzGood < 400) gzGood ++;
+					if (gzGood > 300 && GzBad) GzBad = 0;
+				}
+				else
+				{
+					gzGood = 0;
+				}
+
 				YawRate = YAW_GZ_SIGN * GzRate;						/*统一成"右转为正"*/
 				Yaw   += YawRate * 0.01f;							/*100Hz 积分*/
 			}

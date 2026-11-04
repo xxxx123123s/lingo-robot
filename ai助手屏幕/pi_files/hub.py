@@ -1480,6 +1480,8 @@ class DriveApp(App):
         self.speed = 1.4
         self.hint = ""
         self.t_press = 0.0
+        self.t_stop = 0.0           # 停车键按下时刻（长按 2 秒 = 重标陀螺零偏）
+        self.cal_sent = False
 
     def enter(self):
         self.hub.cars.ensure()
@@ -1497,9 +1499,28 @@ class DriveApp(App):
             self.hub.cars.send("[stop]")
             self.press = None
             self.hint = "连续走了 6 秒，已自动停车"
+            return
+
+        # 长按停车键 2 秒 = 重标陀螺零偏。
+        # 为什么藏在长按里：零偏标歪时车会拒绝一切转向，而修它要在车静止时做，
+        # 还得等人退出操作 —— 给个专门按钮没人知道什么时候按，长按"停"最顺手。
+        if self.press == "stop" and not self.cal_sent and now - self.t_stop > 2.0:
+            self.cal_sent = True
+            self.hub.cars.send("[cal]")
+            self.hint = "重标陀螺零偏：车身放平别动，2 秒后自动完成"
 
     def hit(self, x, y):
         return hubui.hit_drive(x, y)
+
+    def _gzbad(self):
+        """陀螺零偏没标好时，车端会拒绝一切转向命令（保护逻辑）。
+
+        没有这道拦截，用户看到的就是"按了半天没反应"，还以为是屏坏了。
+        实际修法很简单：断电、车放平、再上电，让上电那 1 秒保持静止。"""
+        if self._tel().get("flags", 0) & 8:
+            self.hint = "陀螺没标好：断电→放平→再上电"
+            return True
+        return False
 
     def on_down(self, region):
         self.press = region
@@ -1515,14 +1536,20 @@ class DriveApp(App):
             cars.send(f"[go,{-self.speed:.2f},0]")
             self.hint = "倒车中 · 松手停车"
         elif region == "left":
+            if self._gzbad():
+                return
             cars.send("[turn,-90]")
             self.hint = "左转 90° · 车自己转到位"
         elif region == "right":
+            if self._gzbad():
+                return
             cars.send("[turn,90]")
             self.hint = "右转 90° · 车自己转到位"
         elif region == "stop":
             cars.send("[stop]")
-            self.hint = "已停车"
+            self.t_stop = time.monotonic()
+            self.cal_sent = False
+            self.hint = "已停车（按住不松 2 秒可重标陀螺）"
         elif region in ("faster", "slower"):
             step = float(cars.cfg.get("speed_step", 0.4))
             lo = float(cars.cfg.get("speed_min", 0.5))
