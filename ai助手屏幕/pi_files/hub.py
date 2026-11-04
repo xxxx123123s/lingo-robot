@@ -1482,11 +1482,36 @@ class DriveApp(App):
         self.t_press = 0.0
         self.t_stop = 0.0           # 停车键按下时刻（长按 2 秒 = 重标陀螺零偏）
         self.cal_sent = False
+        self.gest_on = False        # 手势进程在不在（按钮状态）
+        self._gest_chk = 0.0        # 上次查进程的时刻
+        self._gest_busy = False     # 正在起/停，别连点
 
     def enter(self):
         self.hub.cars.ensure()
         self.speed = float(self.hub.cars.cfg.get("speed", 1.4))
         self.hint = ""
+        self._refresh_gest()
+
+    def _refresh_gest(self):
+        """真去问进程在不在，而不是记"我按过一下" —— 进程崩了按钮不能还亮着。"""
+        if vision_intent is None:
+            self.gest_on = False
+            return
+        try:
+            self.gest_on = vision_intent.gesture_running()
+        except Exception:
+            self.gest_on = False
+
+    def _gest_worker(self, turn_on: bool):
+        try:
+            msg = vision_intent.gesture_on() if turn_on else vision_intent.gesture_off()
+        except Exception as exc:                       # noqa: BLE001
+            msg = f"手势操作失败：{exc}"
+        self._gest_busy = False
+        self._refresh_gest()
+        # 顺带把预览地址留在屏幕上：答辩时不用再问"那个网址是多少"。
+        # 用 pi.local 而不是 IP —— 换了网络 IP 会变，这个名字跟着机器走。
+        self.hint = ("手势已开 · 电脑看 pi.local:8099" if self.gest_on else msg)
 
     def leave(self):
         self.hub.cars.send("[stop]")
@@ -1500,6 +1525,11 @@ class DriveApp(App):
             self.press = None
             self.hint = "连续走了 6 秒，已自动停车"
             return
+
+        # 手势进程可能自己退出（摄像头被占、cv2 报错），每 2 秒对一次真实状态
+        if now - self._gest_chk > 2.0:
+            self._gest_chk = now
+            self._refresh_gest()
 
         # 长按停车键 2 秒 = 重标陀螺零偏。
         # 为什么藏在长按里：零偏标歪时车会拒绝一切转向，而修它要在车静止时做，
@@ -1550,6 +1580,18 @@ class DriveApp(App):
             self.t_stop = time.monotonic()
             self.cal_sent = False
             self.hint = "已停车（按住不松 2 秒可重标陀螺）"
+        elif region == "gesture":
+            if vision_intent is None:
+                self.hint = "视觉模块没加载，看日志"
+            elif self._gest_busy:
+                self.hint = "正在切换，等一下"
+            else:
+                # 起进程要 0.5 秒（还要开摄像头），不能在 UI 线程里等，
+                # 否则这半秒屏幕整个定住
+                self._gest_busy = True
+                self.hint = "手势关闭中…" if self.gest_on else "手势启动中…"
+                threading.Thread(target=self._gest_worker,
+                                 args=(not self.gest_on,), daemon=True).start()
         elif region in ("faster", "slower"):
             step = float(cars.cfg.get("speed_step", 0.4))
             lo = float(cars.cfg.get("speed_min", 0.5))
@@ -1574,13 +1616,14 @@ class DriveApp(App):
             car_lost=cars.status == "lost",
             angle=f"{s['angle']:+.1f}°", speed=f"{s['speed']:+.2f}",
             yaw=f"{s['yaw']:+.0f}°", flags=s.get("flags", 0),
-            spd=f"{self.speed:.1f}", press=self.press, hint=self.hint))
+            spd=f"{self.speed:.1f}", press=self.press, hint=self.hint,
+            gest=self.gest_on))
 
     def sig(self, now):
         s = self._tel()
         return (int(s["angle"] * 10), int(s["speed"] * 100), int(s["yaw"]),
                 s.get("flags", 0), self.hub.cars.status, f"{self.speed:.1f}",
-                self.press, self.hint)
+                self.press, self.hint, self.gest_on)
 
 
 # ================================================================ 语音控车页

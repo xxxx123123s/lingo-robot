@@ -163,6 +163,13 @@ def _gesture_pid():
         return 0
 
 
+def gesture_running() -> bool:
+    """手势进程还在不在。触摸屏那个开关要靠它显示当前状态，
+    不能只记"我按过一下"，否则进程崩了按钮还亮着。"""
+    pid = _gesture_pid()
+    return bool(pid) and _alive(pid)
+
+
 def gesture_on() -> str:
     pid = _gesture_pid()
     if pid and _alive(pid):

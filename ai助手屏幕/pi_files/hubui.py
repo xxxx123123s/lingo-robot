@@ -372,6 +372,11 @@ SPEED_MINUS = (14, 248, 58, 288)
 SPEED_PLUS = (182, 248, 226, 288)
 SPEED_BOX = (62, 248, 178, 288)
 
+# 手势开关：放在「↑」左边那块空白。为什么不贴着「←」——
+# 左边那条 4px 缝太窄，演示时手一抖就误触；这里离「↑」有 52px，
+# 想按错都难。开着的时候描绿边，一瞥就知道摄像头在不在看。
+GEST_BTN = (10, 100, 46, 146)
+
 
 def _arrow(d, box, direction, col):
     cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
@@ -427,6 +432,15 @@ def render_drive(v):
         else:
             _arrow(d, box, name, ACCENT if on else TEXT)
 
+    # 手势开关
+    gon = getattr(v, "gest", False)
+    pill(d, GEST_BTN, (30, 52, 42) if gon else (28, 38, 52),
+         outline=GREEN if gon else CARD_EDGE, radius=12, width=2 if gon else 1)
+    gcx = (GEST_BTN[0] + GEST_BTN[2]) / 2
+    center_text(d, gcx, 115, "手势", font(10), GREEN if gon else MUTED)
+    center_text(d, gcx, 132, "开" if gon else "关", font(11),
+                GREEN if gon else (88, 102, 122))
+
     # 速度档
     for box, sign in ((SPEED_MINUS, "-"), (SPEED_PLUS, "+")):
         on = press == ("slower" if sign == "-" else "faster")
@@ -449,6 +463,8 @@ def hit_drive(x, y):
         return "slower"
     if inside(SPEED_PLUS, x, y):
         return "faster"
+    if inside(GEST_BTN, x, y):
+        return "gesture"
     return None
 
 

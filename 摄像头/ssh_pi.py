@@ -7,6 +7,9 @@ import sys
 import paramiko
 
 HOST = "192.168.137.160"
+# 换网络之后 DHCP 给的地址会变，写死的 IP 就不通了。树莓派开着 avahi，
+# 所以换个网也还能用 pi.local 找到它 —— 两个都试，哪个通用哪个。
+HOSTS = [HOST, "pi.local"]
 USER = "pi"
 PASS = "123"
 TIMEOUT = 30
@@ -17,14 +20,17 @@ def client():
     import time
     attempts = 1 if os.environ.get("NO_RETRY") else 5
     last_err = None
+    env_host = os.environ.get("PI_HOST")
+    hosts = [env_host] if env_host else HOSTS
     for attempt in range(attempts):
-        try:
-            c = paramiko.SSHClient()
-            c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            c.connect(HOST, username=USER, password=PASS, timeout=8)
-            return c
-        except Exception as e:
-            last_err = e
+        for host in hosts:
+            try:
+                c = paramiko.SSHClient()
+                c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                c.connect(host, username=USER, password=PASS, timeout=8)
+                return c
+            except Exception as e:
+                last_err = e
             time.sleep(2)
     raise last_err
 
