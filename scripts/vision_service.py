@@ -19,6 +19,11 @@ CSI/USB 双路摄像头）和 face_db.py（SFace 特征 + 本地人脸库）组�
     # 3. 手势（张开手掌 → 停车；握拳 → 前进 4 秒），--mac 直接发蓝牙
     python3 scripts/vision_service.py gesture --mac AA:BB:CC:DD:EE:FF
 
+    # 3b. 同上，但同时在电脑浏览器里看画面（判定参数叠在画面上，调阈值用）
+    #     打开 http://<树莓派IP>:8099/   —— 绿框是判定用的那只手，
+    #     右下小图是肤色掩膜，左上三行是 ratio / compact / 指缝条数
+    python3 scripts/vision_service.py gesture --cmd /tmp/vision.cmd --stream 8099
+
 llm.json 里加一段（base_url 换成你用的厂商，DeepSeek 目前没有视觉接口）：
 
     "vision": {
@@ -48,7 +53,9 @@ import math
 import os
 import socket
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 try:
@@ -77,6 +84,160 @@ SKIN_CB = (77, 127)
 
 def log(msg: str) -> None:
     print(msg, flush=True)
+
+
+# ==================== 电脑预览（MJPEG）====================
+# 手势调阈值最痛苦的地方是"看不见摄像头眼里的自己"：明明举了手它不认，
+# 只能靠日志里的 sol/ratio 猜。把画面（连同判定用到的三个数和掩膜）推到
+# 浏览器上，一眼就能看出是手太小、光线偏色，还是真被判成握拳了。
+#
+# 为什么用 MJPEG 而不是 WebRTC/HLS：浏览器原生支持 multipart/x-mixed-replace，
+# 一行 <img> 就完事，不用装任何东西，也不用在电脑上跑客户端。
+
+class _Live:
+    """最新一帧 + 观众数。没人看就不编码，省 CPU。"""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.jpeg = b""
+        self.seq = 0
+        self.clients = 0
+
+    def publish(self, jpg: bytes) -> None:
+        with self.lock:
+            self.jpeg = jpg
+            self.seq += 1
+
+    def wait(self, last: int, timeout: float = 2.0):
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            with self.lock:
+                # 空帧不发：浏览器刚连上时还没出第一帧，发个长度为 0 的
+                # multipart 会让某些浏览器把<img>当成坏图
+                if self.seq != last and self.jpeg:
+                    return self.jpeg, self.seq
+            time.sleep(0.03)
+        return None, last
+
+
+LIVE = _Live()
+
+_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>手势预览</title>
+<style>
+ body{margin:0;background:#111;color:#ddd;font:14px/1.6 system-ui,sans-serif}
+ img{width:100%;max-width:960px;display:block;margin:0 auto}
+ p{text-align:center;margin:8px 0 16px}
+ b{color:#4ade80}
+</style></head>
+<body>
+<img src="/stream" alt="等待画面">
+<p><b>握拳</b> = 前进 4 秒 &nbsp;·&nbsp; <b>张开手掌</b> = 停车 &nbsp;·&nbsp;
+   绿框 = 判定用的手，右下小图 = 肤色掩膜</p>
+</body></html>
+""".encode("utf-8")
+
+
+class _Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):          # 每帧一个请求，别刷日志
+        pass
+
+    def do_GET(self):                      # noqa: N802
+        if self.path.startswith("/stream"):
+            self.send_response(200)
+            self.send_header("Content-Type",
+                             "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            LIVE.clients += 1
+            seq = -1
+            try:
+                while True:
+                    jpg, seq = LIVE.wait(seq)
+                    if jpg is None:
+                        continue
+                    self.wfile.write(b"--frame\r\n")
+                    self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                    self.wfile.write(b"Content-Length: %d\r\n\r\n" % len(jpg))
+                    self.wfile.write(jpg)
+                    self.wfile.write(b"\r\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass                           # 浏览器关页面，正常
+            finally:
+                LIVE.clients -= 1
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(_PAGE)))
+        self.end_headers()
+        self.wfile.write(_PAGE)
+
+
+def lan_ip() -> str:
+    """本机在局域网里的地址。不真的发包，只是让内核选一条出口。"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:                      # noqa: BLE001
+        return "127.0.0.1"
+
+
+def start_stream(port: int) -> bool:
+    if port <= 0:
+        return False
+    try:
+        srv = ThreadingHTTPServer(("0.0.0.0", port), _Handler)
+    except OSError as exc:
+        log(f"预览端口 {port} 打不开（{exc}），画面在命令行里看不到，但不影响手势")
+        return False
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    log(f"电脑预览：http://{lan_ip()}:{port}/   浏览器直接打开就能看画面")
+    return True
+
+
+def _annotate(frame, det, act: str | None, fired: int):
+    """把判定结果画在画面上。只用 ASCII —— cv2.putText 画不了中文。"""
+    img = frame.copy()
+    h, w = img.shape[:2]
+
+    if det.mask is not None:
+        mh, mw = det.mask.shape[:2]
+        sc = w / float(max(mw, 1))
+        if det.contour is not None:
+            c = (det.contour.astype(np.float32) * sc).astype(np.int32)
+            cv2.drawContours(img, [c], -1, (0, 210, 0), 2)
+        tw, th = w // 4, h // 4
+        thumb = cv2.resize(det.mask, (tw, th))
+        img[h - th - 8:h - 8, w - tw - 8:w - 8] = cv2.cvtColor(
+            thumb, cv2.COLOR_GRAY2BGR)
+
+    if act == "forward":
+        head, col = "FIST -> FORWARD", (0, 210, 0)
+    elif act == "stop":
+        head, col = "PALM -> STOP", (0, 140, 255)
+    else:
+        head, col = "no gesture", (190, 190, 190)
+
+    cv2.putText(img, head, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                0.8, col, 2, cv2.LINE_AA)
+    cv2.putText(img, "ratio %.2f (>=%.2f)  compact %.2f  gaps %d" %
+                (det.ratio, det.min_ratio, det.compact, det.defects),
+                (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
+    cv2.putText(img, "fist: compact>=%.2f  gaps<=%d" %
+                (det.fist_compact, det.fist_defects),
+                (10, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                (160, 160, 160), 1, cv2.LINE_AA)
+    cv2.putText(img, "fired %d" % fired, (10, 96),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1, cv2.LINE_AA)
+    return img
+
 
 
 # ----------------------------------------------------------------- 抓图
@@ -218,6 +379,8 @@ class HandDetector:
         self.ratio = 0.0
         self.solidity = 0.0
         self.compact = 0.0
+        self.mask = None        # 最近一帧的肤色掩膜（小尺寸），只给电脑预览用
+        self.contour = None     # 最近一帧判定用的那只手的轮廓，同上
         self.defects = 0
 
     def update(self, frame, faces=None):
@@ -265,12 +428,15 @@ class HandDetector:
         self.solidity = 0.0
         self.compact = 0.0      # 4πA/P²：圆≈1，手指张开明显小于 1
         self.defects = 0        # 深指缝的条数：握拳 0~1，张手 2~4
+        self.mask = mask
+        self.contour = None
 
         kind = None
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
         if contours:
             big = max(contours, key=cv2.contourArea)
+            self.contour = big
             carea_abs = float(cv2.contourArea(big))
             carea = carea_abs / area
             hull = cv2.convexHull(big)
@@ -362,6 +528,9 @@ def cmd_gesture(args) -> int:
                             open_compact=args.open_compact)
     started = time.time()
     fired = 0
+    stream = int(getattr(args, "stream", 0) or 0)
+    if stream:
+        start_stream(stream)
 
     # 人脸框：每 0.7 秒找一次，用来把"脸"从肤色图里排除掉。
     # 不排除的话，人往前站一点（脸占 17%、实心度 0.75）就正好踩在判定线上，
@@ -415,6 +584,19 @@ def cmd_gesture(args) -> int:
                     break
             elif args.verbose:
                 log(f"  sol={detector.solidity:.2f} ratio={detector.ratio:.2f}")
+
+            # 只在真的有人在看时编码 —— 没人连的时候一帧 JPEG 都不做，
+            # 开了预览也不会拖慢识别（树莓派 4 上 640x480 编码约 4ms/帧）。
+            if stream and LIVE.clients > 0:
+                try:
+                    vis = _annotate(frame, detector, act, fired)
+                    ok, buf = cv2.imencode(
+                        ".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                    if ok:
+                        LIVE.publish(buf.tobytes())
+                except Exception as exc:                   # noqa: BLE001
+                    if fired == 0:
+                        log(f"预览帧编码失败（{type(exc).__name__}: {exc}），不影响识别")
             if args.duration and (time.time() - started) >= args.duration:
                 break
             time.sleep(0.02)
@@ -642,6 +824,8 @@ def main() -> int:
                    help="不排除人脸区域（默认排除，防止站着不动被当成举手）")
     p.add_argument("--once", action="store_true", help="触发一次前进就退出（调阈值用）")
     p.add_argument("--duration", type=float, default=0, help="跑多少秒后退出，0 为一直跑")
+    p.add_argument("--stream", type=int, default=8099,
+                   help="在电脑浏览器里看画面（MJPEG 端口，0 = 不开）")
     p.set_defaults(func=cmd_gesture)
 
     args = ap.parse_args()
