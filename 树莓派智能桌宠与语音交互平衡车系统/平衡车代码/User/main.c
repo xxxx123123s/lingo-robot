@@ -40,6 +40,66 @@
   读数时记得除以它才是真实速度：显示 6.0 就是 2.0 圈/秒（当 GAIN=3 时）*/
 #define PLOT_SPD_GAIN  3.0f
 
+/*==================== 上位机（树莓派）控制接口 ====================
+  与 麦克佛加喇叭/pi_files/car.py（语音）、ai助手屏幕/pi_files/hub.py（触屏）配套。
+
+  上位机 → 车
+    [go,速度,转向]     速度：圈/秒，正数前进，负数后退；转向：-1~+1 开环差速（一般给 0）
+    [turn,角度]        相对当前航向转多少度，正数右转。★闭环在车端，转完自己停
+    [stop]             运动指令全部归零，但保持平衡（不关机、不倒）
+    [run,1] / [run,0]  远程启动 / 关闭平衡环，等同按 Key1
+    [joystick,...]     遥控器，调试用，保留
+    [slider,...]       在线调参，保留
+    [plot,...]         蓝牙波形（默认关，开了会挤占遥测带宽）
+
+  车 → 上位机
+    [s,角度x10,速度x100,航向,状态位]      10Hz
+      状态位：1=运行中  2=转向中  4=跌倒锁  8=陀螺零偏没标好
+
+  设计要点
+    · 转向闭环放在车上：Pi 只说"转 90 度"，转到多少由车自己保证，
+      蓝牙延迟不进入控制环，所以掉几包也不会转歪。
+    · [stop] 只清运动指令，不动 RunFlag —— 车要一直保持平衡站着，
+      否则一条 [stop] 就把车关机放倒，演示时非常危险。
+    · 航向靠 GZ 积分，上电头 1 秒静止标零偏；标歪了置 GzBad，
+      上位机会拒绝转向指令（否则它会把航向漂移当成真转向）。
+===============================================================*/
+#define USE_PLOT        0       /* 1=发送蓝牙波形；0=只发遥测（默认）*/
+#define TEL_DIV         2       /* 每 2×50ms=100ms 发一帧遥测（10Hz）*/
+#define YAW_KP          0.45f   /* 航向误差(°) → 差速 PWM。90° 误差给 40（撞限幅 14），
+                                   30° 给 13（正好越过静摩擦 8~10），10° 给 4.5（靠积分补）*/
+#define YAW_KI          0.25f   /* 积分：每拍每度加多少 PWM。只在 |误差|<YAW_I_ZONE 时累加，
+                                   专门用来消电机静摩擦死区（近目标时光靠 P 推不动）*/
+#define YAW_I_ZONE      25.0f   /* 积分分离阈值：误差大于这个就不积分，防远处积分风*/
+#define YAW_IMAX        8.0f    /* 积分最多贡献 8 个差速 PWM */
+#define YAW_KD          0.18f   /* 阻尼：每 1°/s 转 speed 回退多少 PWM，防冲过头。
+                                   转得越快回退越多，所以接近目标时会自然减速 */
+#define YAW_OUTMAX      14.0f   /* 转向差速上限。估 1 个 PWM ≈ 0.11 圈/秒轮速，
+                                   14 PWM 的差速 ≈ 1.5 圈/秒 ≈ 60~70°/s，和 Pi 端
+                                   假设的 56°/s 同量级。太慢转不到位，太快必过冲 */
+#define YAW_DONE        2.5f    /* 航向误差小于这个就算转到位，收手。
+                                   比 Pi 端的 4° 判据留 1.5° 余量，给收手瞬间的惯性*/
+
+/*---- 转向闭环的三个"安全阀"，出问题按顺序查 ----
+  1. 转过头/转不到位  → 调 YAW_OUTMAX（上限，决定最快转多快）和 YAW_KD（刹车力度）
+  2. 转到位了但差 5~10° 不动 → 静摩擦。加大 YAW_KI，或把 YAW_I_ZONE 放宽
+  3. 方向反了（说右转往左转）→ 先看遥测航向在右转时变大还是变小，
+     变小就改 YAW_GZ_SIGN 为 -1.0f；数值到不了目标就改 YAW_DIR
+--------------------------------------------------------*/
+#define YAW_DIR        (-1.0f)  /* 差速 PWM 的转向方向。LeftPWM=ave-dif、RightPWM=ave+dif，
+                                   所以 dif>0 是左轮慢右轮快 = 左转，而"右转为正"，
+                                   故取 -1。★若实测"喊右转却往左转"，把它改成 +1.0f */
+#define YAW_GZ_SIGN    (+1.0f)  /* 陀螺 Z 轴的符号：决定"Yaw 增大"是不是车头向右转。
+                                   MPU6050 装在车上，GZ 正方向取决于模块朝向。
+                                   ★判定：手握车保持水平，慢慢把它【向右】转 90°，
+                                     看遥测第 4 个字段（航向）是变大还是变小。
+                                     变大 → 保持 +1；变小 → 改成 -1.0f。
+                                   这个符号错了不会失控（方向自检会兜住"转不到位"），
+                                   但会出现"说右转、实际左转"。*/
+#define YAW_TIMEOUT_MS  12000u  /* 单次转向最长 12 秒，超时强制收手（防符号错时原地转圈）*/
+#define CMD_TIMEOUT_MS  9000u   /* 这么久没再收到 [go] 就自动停车（防断链飞车）*/
+#define GZ_CAL_N        100     /* 上电用 100 拍（1 秒）标陀螺零偏 */
+
 float AngleA;//角度
 float AngleG;//陀螺仪测角度角度
 float AngleRaw;//互补滤波原始角度（未加零位补偿）
@@ -121,6 +181,38 @@ uint8_t TimerErrorFlag;
 uint16_t Timercount0;
 
 uint8_t KeyNum,RunFlag;
+
+/*==================== 上位机接口用的状态量 ====================*/
+#define FABS(x)  ((x) < 0.0f ? -(x) : (x))
+
+float    Yaw = 0;            /* 航向角（度）。GZ 积分而来，连续累加不回绕，
+                                因为 Pi 端用的是"起点+角度"的绝对比较，回绕会算错 */
+float    YawTarget = 0;      /* 本段转向的目标航向 */
+float    GzBias = 0;         /* GZ 零偏（LSB），上电标定 */
+float    GzRate = 0;         /* 当前偏航角速度 °/s，给转向 D 项用 */
+float    YawRate = 0;        /* 同上，但已经过 YAW_GZ_SIGN 统一成"右转为正" */
+uint8_t  YawMode = 0;        /* 1 = 正在按航向闭环转向 */
+uint8_t  GzBad = 0;          /* 1 = 上电标零偏时车在动，航向不可信 */
+uint8_t  Fallen = 0;         /* 1 = 摔过，已锁死，等 [run,1] 或 Key1 解锁 */
+uint32_t LastMoveTick = 0;   /* 最后一次收到运动指令的时刻 */
+volatile uint8_t TelFlag = 0;/* 1 = 该发一帧遥测了（中断置位，主循环发送）*/
+volatile uint8_t TeleTick = 0;/* 遥测分频计数（中断里 20Hz 加一，主循环判断用）*/
+
+/*---- 转向闭环内部状态 ----*/
+float    YawInt = 0;         /* 转向积分项（PWM），退出转向时清零 */
+float    YawStart = 0;       /* 本段转向开始时的航向，用于"方向反了"自检 */
+uint32_t YawTick = 0;        /* 本段转向开始时刻 */
+float    YawDir = YAW_DIR;   /* 运行时可翻转的方向系数，见探路逻辑 */
+uint8_t  YawProbed = 0;      /* 已做过方向自检 */
+
+/*运动指令来源。为什么必须区分：
+  摇杆是"持续发送、松开就没有"（500ms 收不到就停），
+  而上位机 [go,3] 是"发一次就一直跑"（靠 CMD_TIMEOUT_MS 兜底）。
+  两者混在一起时，摇杆保护会在 500ms 内把 [go] 的目标清掉 —— 车只跑半秒。*/
+#define MOVE_IDLE   0
+#define MOVE_JOY    1
+#define MOVE_PI     2
+uint8_t  MoveMode = MOVE_IDLE;
 
 int16_t LeftPWM, RightPWM;
 int16_t avePWM,difPWM;
@@ -312,6 +404,16 @@ int main(void)
 	PID_init(&AnglePID);
 	PID_init(&SpeedPID);
 	PID_init(&TurnPID);
+
+	/*★PID_init 只清状态量（Out/Error/ErrorInt），【不清 Target】。
+	  所以必须手动归零，否则上一次 [go,3] 还挂在那里，人把车扶起来按一下启动，
+	  第一拍误差就是"目标倾角 = 速度环输出"，车当场窜出去。
+	  这就是"扶起来一按就跑"的经典原因。*/
+	SpeedPID.Target = 0.0f;
+	TurnPID.Target  = 0.0f;
+	YawMode = 0;
+	YawInt  = 0.0f;
+	Fallen  = 0;
   }
 
   if(RunFlag)
@@ -338,8 +440,11 @@ int main(void)
     就把行进和转向指令全部归零。
     没有这一条时，Target 会一直卡在最后一次收到的值上：遥控器已经不发了，
     车却还以为你要它以 5 圈/秒往前跑，于是怎么松手都停不下来 ——
-    这也是"松摇杆却停不住"的一个常见原因，和积分无关。*/
-  if (RunFlag == 1 && (uint32_t)(MsTick - LastJoyTick) > 500)
+    这也是"松摇杆却停不住"的一个常见原因，和积分无关。
+
+    ★只在摇杆模式下生效。上位机 [go] 是"发一次就一直跑"的语义，
+      用 500ms 判据会把它的目标清掉，车只跑半秒。上位机走下面的 CMD_TIMEOUT。*/
+  if (RunFlag == 1 && MoveMode == MOVE_JOY && (uint32_t)(MsTick - LastJoyTick) > 500)
   {
 	if (SpeedPID.Target != 0.0f || TurnPID.Target != 0.0f)
 	{
@@ -350,7 +455,20 @@ int main(void)
 		AnglePID.ErrorInt = 0;
 		LastRH = 0;
 		LastLV = 0;
+		MoveMode = MOVE_IDLE;
 	}
+  }
+
+  /*★上位机指令看门狗：Pi 掉线 / 蓝牙断开时车必须自己停下。
+    只对 [go] 生效 —— [turn] 有自己的 YAW_TIMEOUT_MS，转向本来就会自己结束。
+    没有这一条：Pi 一断，车会以最后那条 [go,3] 一直往前跑，直到撞墙或摔倒。*/
+  if (RunFlag == 1 && MoveMode == MOVE_PI &&
+      (uint32_t)(MsTick - LastMoveTick) > CMD_TIMEOUT_MS)
+  {
+	SpeedPID.Target  = 0.0f;
+	SpeedPID.ErrorInt = 0.0f;
+	AnglePID.ErrorInt = 0.0f;
+	MoveMode = MOVE_IDLE;
   }
 
   /*零点自动校准：满足"站住了 2 秒"就用速度环的倾角指令把零位慢慢归到 0*/
@@ -466,6 +584,115 @@ int main(void)
 					TurnPID.Kd = atof(Value);
 				}
 			}
+			/*========== 上位机（树莓派）命令 ==========
+			  与 pi_files/car.py 一一对应。三个特点：
+			    · 所有数值都做硬限幅 —— Pi 端算错了，车也不能飞出去
+			    · [stop] 只停运动，不关 RunFlag —— 车要继续保持平衡站着，
+			      演示时一条 [stop] 就把车放倒是最尴尬的场面
+			    · 收到任何运动指令都算"喂狗"，防止看门狗在指令间隙误停*/
+			else if (strcmp(Tag, "go") == 0)			//[go,速度,转向]  速度圈/秒，正前进
+			{
+				char *V = strtok(NULL, ",");			//数据2：目标速度
+				char *T = strtok(NULL, ",");			//数据3：开环差速，±1，一般给 0
+				float v = (V != NULL) ? atof(V) : 0.0f;
+				float t = (T != NULL) ? atof(T) : 0.0f;
+
+				if (v >  5.0f) v =  5.0f;				//硬限幅：写错也不能飞车
+				if (v < -5.0f) v = -5.0f;
+				if (t >  1.0f) t =  1.0f;
+				if (t < -1.0f) t = -1.0f;
+
+				SpeedPID.Target = v;
+				TurnPID.Target  = t;
+				YawMode  = 0;							//行进优先，退出航向闭环
+				YawInt   = 0.0f;
+				MoveMode = MOVE_PI;
+				LastMoveTick = MsTick;					//喂狗
+			}
+			else if (strcmp(Tag, "turn") == 0)			//[turn,角度]  相对转向，正数右转
+			{
+				char *D = strtok(NULL, ",");
+				float deg = (D != NULL) ? atof(D) : 0.0f;
+
+				LastMoveTick = MsTick;					//喂狗（转向本身也要时间）
+				if (deg >  360.0f) deg =  360.0f;
+				if (deg < -360.0f) deg = -360.0f;
+
+				if (deg > -1.0f && deg < 1.0f)
+				{
+					/*0 度 = 取消转向*/
+					YawMode = 0;  YawInt = 0.0f;
+					TurnPID.Target = 0.0f;  TurnPID.ErrorInt = 0.0f;
+				}
+				else if (GzBad || RunFlag == 0)
+				{
+					/*航向不可信（上电标零偏时车在动，每秒漂十几度）。
+					  这时候转向闭环会把漂移当成真转向，几百毫秒就"以为"到位 ——
+					  表现出来是"车抽两下就停"。拒绝执行，让 Pi 端超时收场。
+					  没启动（RunFlag=0）时也一样：不能把转向挂在那儿等启动，
+					  否则一按启动车立刻原地转起来。*/
+					YawMode = 0;  YawInt = 0.0f;
+					TurnPID.Target = 0.0f;  TurnPID.ErrorInt = 0.0f;
+				}
+				else
+				{
+					/*原地转向：先把行进全部停掉。边走边转会让航向积分叠上打滑误差，
+					  而且 Pi 本来就是 go/stop/turn 分开调的*/
+					SpeedPID.Target  = 0.0f;
+					SpeedPID.ErrorInt = 0.0f;
+					AnglePID.ErrorInt = 0.0f;
+					TurnPID.Target   = 0.0f;
+					TurnPID.ErrorInt = 0.0f;
+
+					YawTarget = Yaw + deg;				//相对当前航向，不依赖 Pi 那边的读数
+					YawStart  = Yaw;
+					YawInt    = 0.0f;
+					YawMode   = 1;
+					YawProbed = 0;						//重新开始方向自检
+					YawTick   = MsTick;
+					MoveMode  = MOVE_PI;
+				}
+			}
+			else if (strcmp(Tag, "stop") == 0)			//[stop] 只停运动，不关机
+			{
+				SpeedPID.Target  = 0.0f;
+				TurnPID.Target   = 0.0f;
+				SpeedPID.ErrorInt = 0.0f;
+				TurnPID.ErrorInt  = 0.0f;
+				AnglePID.ErrorInt = 0.0f;
+				YawMode = 0;
+				YawInt  = 0.0f;
+				MoveMode = MOVE_IDLE;
+				LastMoveTick = MsTick;
+			}
+			else if (strcmp(Tag, "run") == 0)			//[run,1] / [run,0] 远程启停
+			{
+				char *V = strtok(NULL, ",");
+				uint8_t on = (V != NULL) ? (uint8_t)atoi(V) : 1;
+
+				if (on)
+				{
+					/*★启动前必须像按 Key1 一样把状态清干净：
+					  跌倒时残留的目标/积分会让第一拍满功率输出。*/
+					PID_init(&AnglePID);
+					PID_init(&SpeedPID);
+					PID_init(&TurnPID);
+					SpeedPID.Target = 0.0f;
+					TurnPID.Target  = 0.0f;
+					Fallen  = 0;
+					YawMode = 0;
+					YawInt  = 0.0f;
+					RunFlag = 1;
+				}
+				else
+				{
+					RunFlag = 0;
+					YawMode = 0;
+					YawInt  = 0.0f;
+				}
+				MoveMode = MOVE_IDLE;
+				LastMoveTick = MsTick;
+			}
 			else if (strcmp(Tag, "joystick") == 0)			//Tag为joystick，收到摇杆数据包
 			{
 				int8_t LH = atoi(strtok(NULL, ","));		//提取数据2，定义为摇杆值LH
@@ -475,6 +702,9 @@ int main(void)
 				uint8_t RelFlag;							//1=这一拍刚好松开摇杆
 				
 				LastJoyTick = MsTick;						//刷新"最后一次收到摇杆包"的时刻
+				MoveMode = MOVE_JOY;						//切到摇杆语义（500ms 失联即停）
+				YawMode  = 0;								//手动遥控优先，退出航向闭环
+				YawInt   = 0.0f;
 
 				/*执行摇杆操作*/
 				SpeedPID.Target = LV / 25.0;		//摇杆值LV缩2放后，控制角度环目标值，前后行进控制
@@ -534,10 +764,42 @@ int main(void)
 		  只在 20Hz 采样更新后发一次，保证波形横轴是等间隔的（9600 波特率下
 		  一行要阻塞 ~20ms，若每圈主循环都发，时间轴会被主循环速度带偏）。
 		  一行 ~24 字符 ≈ 25ms，20Hz（50ms）够用；若改到 100Hz 发送必须提波特率*/
+		/*==================== 遥测上报 ====================
+		  格式与 麦克佛加喇叭/pi_files/car.py 的 _parse() 严格一一对应：
+		    [s, 角度×10, 速度×100, 航向, 状态位, 差速×100, 差速PWM, 平均PWM,
+		        倾角指令×10, 速度环积分, 角度环积分, 零点学习量×10]
+		  为什么乘 10/100：蓝牙是文本协议，整数比小数省字节，也不会出现
+		  "0.2999999"这种浮点尾巴把人看懵。
+		  10Hz 是刻意压的：9600 波特下一帧约 40 字符 ≈ 42ms，再快会堵住主循环。
+		  状态位：1=运行中  2=转向中  4=跌倒锁  8=陀螺零偏没标好*/
+		if (TelFlag)
+		{
+			uint8_t fl = 0;
+			TelFlag = 0;
+			if (RunFlag) fl |= 1;
+			if (YawMode) fl |= 2;
+			if (Fallen)  fl |= 4;
+			if (GzBad)   fl |= 8;
+			BlueSerial_Printf("[s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d]",
+				(int)(Angle * 10.0f),
+				(int)(aveSpeed * 100.0f),
+				(int)Yaw,
+				(int)fl,
+				(int)(difSpeed * 100.0f),
+				(int)difPWM,
+				(int)avePWM,
+				(int)(AnglePID.Target * 10.0f),
+				(int)(SpeedPID.Ki * SpeedPID.ErrorInt),
+				(int)AnglePID.ErrorInt,
+				(int)(AngleOfsLearn * 10.0f));
+		}
+
 		if (PlotFlag)
 		{
 			PlotFlag = 0;
+#if USE_PLOT
 			BlueSerial_Printf("[plot,%.3f,%.3f]", aveSpeed * PLOT_SPD_GAIN, Angle);
+#endif
 		}
 		// BlueSerial_Printf("[plot,%f,%f]", TurnPID.Target, difSpeed);
 		// BlueSerial_Printf("[plot,%f,%f]", SpeedPID.Target, aveSpeed);
@@ -584,11 +846,54 @@ void TIM1_UP_IRQHandler(void)
 			if (First) {AngleDisp = Angle; First = 0;}
 			else       {AngleDisp += ANGLE_DISP_ALPHA * (Angle - AngleDisp);}
 		}
+
+		/*-------- 偏航（航向）：上电标零偏 + 100Hz 积分 --------*/
+		{
+			static uint8_t gzN = 0;
+			static float   gzSum = 0, gzSum2 = 0;
+
+			if (gzN < GZ_CAL_N)
+			{
+				/*上电头 1 秒电机不转，正好标 GZ 零偏。同时算标准差判断
+				  "车是不是在动"：有人一边扶着一边上电，标出来的零偏会让
+				  航向每秒漂几十度，转向闭环会把漂移当成真转向、几百毫秒就
+				  "以为"转到位 —— 表现出来就是"车抽两下就停"。*/
+				gzSum  += (float)GZ;
+				gzSum2 += (float)GZ * (float)GZ;
+				gzN ++;
+				if (gzN >= GZ_CAL_N)
+				{
+					float mean = gzSum / (float)GZ_CAL_N;
+					float var  = gzSum2 / (float)GZ_CAL_N - mean * mean;
+					GzBias = mean;
+					GzBad  = (var > 40000.0f) ? 1 : 0;	/*标准差 >200LSB≈12°/s 判为标歪了*/
+					Yaw    = 0;
+				}
+			}
+			else
+			{
+				GzRate = ((float)GZ - GzBias) / 32768.0f * 2000.0f;	/*°/s*/
+				YawRate = YAW_GZ_SIGN * GzRate;						/*统一成"右转为正"*/
+				Yaw   += YawRate * 0.01f;							/*100Hz 积分*/
+			}
+		}
+
 		if(RunFlag==1)
 		{
 				if(Angle>50||Angle<-50)
 			{
+				/*跌倒：立刻断电，并把运动指令、转向、积分全部清干净。
+				  不清的话车虽然停着，但 SpeedPID.Target 还挂着前一次的速度，
+				  人把车扶起来按启动，它第一拍就按旧指令窜出去。*/
 				RunFlag=0;
+				Fallen=1;
+				YawMode=0;
+				SpeedPID.Target=0.0f;
+				TurnPID.Target=0.0f;
+				SpeedPID.ErrorInt=0.0f;
+				TurnPID.ErrorInt=0.0f;
+				AnglePID.ErrorInt=0.0f;
+				YawInt=0.0f;
 				Motor_SetPWM(1,0);
 				Motor_SetPWM(2,0);
 			}
@@ -646,12 +951,82 @@ void TIM1_UP_IRQHandler(void)
 	difSpeed=LeftSpeed-RightSpeed;
 	aveSpeed=(LeftSpeed+RightSpeed)/2.0; 
 	PlotFlag=1;			/*本拍有新数据，让主循环去发一次波形（20Hz 定速，波形时间轴才不乱）*/
+
+	/*遥测分频：20Hz 再除以 TEL_DIV 就是 10Hz，交给主循环发*/
+	TeleTick ++;
+	if (TeleTick >= TEL_DIV) { TeleTick = 0; TelFlag = 1; }
+
 	if(RunFlag==1)
 	{
-	/*先算转向环：它只约束"两轮速度差"*/
-	TurnPID.Actual=difSpeed;
-	PID_Update(&TurnPID);
-	difPWM=TurnPID.Out;
+	/*========== 转向：两种模式，二选一 ==========
+	  ① YawMode=1（Pi 发 [turn,角度]）：航向闭环，直接算出差速 PWM。
+	     为什么绕开 TurnPID：TurnPID 的 Actual 是 difSpeed，而 difPWM 与 difSpeed 是
+	     反号的（difPWM>0 → 左轮慢右轮快 → 左转 → difSpeed<0），拿它做闭环等于正反馈。
+	     航向闭环改用 Yaw 做 Actual，符号由 YAW_DIR 显式给定，不会绕反。
+	  ② YawMode=0（摇杆 [joystick] / [go,v,t]）：沿用原来的差速速度环，行为完全不变。*/
+	if (YawMode)
+	{
+		float err  = YawTarget - Yaw;		/* 正 = 还需要继续右转 */
+		uint32_t dt = MsTick - YawTick;
+
+		/*---- 方向自检：给出去 0.8 秒后，看航向有没有朝目标方向动 ----
+		  轮子左右装反、GZ 装反、车身坐标系和我推的不一样，都会让闭环变成
+		  "越转越远"。这里只在确实转反了（动了 3° 以上且方向相反）时翻一次。*/
+		if (!YawProbed && dt > 800u)
+		{
+			float moved = Yaw - YawStart;
+			float want  = YawTarget - YawStart;
+			if (moved * want < 0.0f && FABS(moved) > 3.0f)
+			{
+				YawDir = -YawDir;
+				YawInt = 0.0f;
+			}
+			YawProbed = 1;
+		}
+
+		/*---- 到位 / 超时 → 收手 ----
+		  ★"到位"必须同时满足"误差小"和"真的停下来了"。
+		  只看误差会在车还在惯性转的时候收手，结果转过头 5~6° ——
+		  而 Pi 端判到位的条件是 |航向-目标| ≤ 4°，转过头它就一直等到超时。
+		  加上角速度判据后，正在转的时候 D 项会继续刹车，停稳了才收。*/
+		if ((FABS(err) < YAW_DONE && FABS(YawRate) < 8.0f) || dt > YAW_TIMEOUT_MS)
+		{
+			/*---- 到位 / 超时 → 收手，差速归零 ----*/
+			YawMode = 0;
+			YawInt  = 0.0f;
+			difPWM  = 0;
+			TurnPID.ErrorInt = 0;
+			TurnPID.Out      = 0.0f;	/*转向期间 TurnPID 没更新，不清会在下次行进时残留*/
+		}
+		else
+		{
+			/*积分分离：只在近距离（<30°）才积分，专门用来顶穿电机静摩擦死区。
+			  远处光靠 P 已经撞限幅了，再积分只会让收尾过冲。*/
+			if (FABS(err) < YAW_I_ZONE)
+			{
+				YawInt += YAW_KI * err;
+				if (YawInt >  YAW_IMAX) YawInt =  YAW_IMAX;
+				if (YawInt < -YAW_IMAX) YawInt = -YAW_IMAX;
+			}
+			{
+				/*P+I 决定"往哪边转、多用力"，D 用陀螺角速度刹车，防冲过头。
+				  注意用的是 YawRate（已统一成"右转为正"），不是裸的 GzRate ——
+				  否则 YAW_GZ_SIGN 改成 -1 之后 D 项会变成正反馈。*/
+				float out = YAW_KP * err + YawInt - YAW_KD * YawRate;
+				out *= YawDir;
+				if (out >  YAW_OUTMAX) out =  YAW_OUTMAX;
+				if (out < -YAW_OUTMAX) out = -YAW_OUTMAX;
+				difPWM = (int16_t)out;
+			}
+		}
+	}
+	else
+	{
+		/*先算转向环：它只约束"两轮速度差"*/
+		TurnPID.Actual=difSpeed;
+		PID_Update(&TurnPID);
+		difPWM=TurnPID.Out;
+	}
 
 	/*★速度环【任何时候都要跑】，不再像以前那样"转向时直接退出"。
 	  原因：差速环只约束 L-R，两轮之和 L+R 没人管。和不为零就等于车在平移，
@@ -661,7 +1036,7 @@ void TIM1_UP_IRQHandler(void)
 	  但转向期间【不许它积分】：原地转向车轮打滑，aveSpeed 会有偏，
 	  积起来就成了松手后还挂着的残留倾角（就是之前"转久了松手往前冲"的根源）。
 	  所以转向期间只保留 P 的即时作用，积分器每拍清零、不许累积。*/
-	if(TurnPID.Target != 0)
+	if(TurnPID.Target != 0.0f || YawMode != 0)
 	{
 		SpeedPID.ErrorInt = 0;		
 	}
