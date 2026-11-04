@@ -60,8 +60,9 @@ def env():
 
 def drive():
     v = types.SimpleNamespace(car_ok=True, connecting=False, angle="+1.2°",
-                              speed="+0.00", yaw="+91°", flags=1, spd="1.4",
-                              press="up", hint="行驶中，松手停车")
+                              speed="+0.80", yaw="+91°", flags=1, spd="1.4",
+                              press=None, hint="满推 1.4 圈/秒",
+                              jx=0.62, jy=-0.55, joy=True)
     return hubui.render_drive(v)
 
 

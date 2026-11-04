@@ -361,29 +361,35 @@ def render_env(v):
 
 
 # ================================================================ 遥控
-DPAD = {
-    "up": (98, 100, 142, 142),
-    "down": (98, 200, 142, 242),
-    "left": (50, 148, 90, 190),
-    "right": (150, 148, 190, 190),
-    "stop": (98, 150, 142, 192),
-}
+# 十字键换成虚拟摇杆。原因：这块屏是单点触摸，一次只能按一个地方，
+# 「上 + 左」两个键同时按是不可能事件 —— 而手机 APP 的摇杆一个拇指就能
+# 同时给速度和转向。与其在触摸屏上做出一个「和手机不一样」的阉割版，
+# 不如直接照抄摇杆：同一个 [joystick,LH,LV,RH,RV] 协议，手感天然一致。
+JOY_C = (104, 170)                 # 摇杆圆心
+JOY_R = 58                         # 底盘半径
+JOY_KNOB = 20                      # 摇杆头半径
+JOY_MAX = 37                       # 摇杆头最大位移，对应归一化幅度 1.0
+BTN_HALT = (172, 106, 228, 152)    # 停车键，放在摇杆右上方，拇指够得到
 SPEED_MINUS = (14, 248, 58, 288)
 SPEED_PLUS = (182, 248, 226, 288)
 SPEED_BOX = (62, 248, 178, 288)
 
 
-def _arrow(d, box, direction, col):
-    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-    s = 8
-    if direction == "up":
-        d.polygon([(cx, cy - s), (cx - s, cy + s * 0.7), (cx + s, cy + s * 0.7)], fill=col)
-    elif direction == "down":
-        d.polygon([(cx, cy + s), (cx - s, cy - s * 0.7), (cx + s, cy - s * 0.7)], fill=col)
-    elif direction == "left":
-        d.polygon([(cx - s, cy), (cx + s * 0.7, cy - s), (cx + s * 0.7, cy + s)], fill=col)
-    else:
-        d.polygon([(cx + s, cy), (cx - s * 0.7, cy - s), (cx - s * 0.7, cy + s)], fill=col)
+def joy_norm(x, y):
+    """触摸点 → 归一化摇杆量 (nx, ny)。
+
+    ny 用屏幕坐标系、向下为正，所以「上推 = ny 为负 = 前进」，转换在 hub.py 里做。
+    超出底盘半径的按圆周投影：方向不变、幅度封顶 1.0，
+    否则斜着推会得到 1.41 倍幅度，手感会「对角线比直线更冲」。
+    """
+    dx, dy = x - JOY_C[0], y - JOY_C[1]
+    if dx * dx + dy * dy < 4.0:
+        return 0.0, 0.0
+    nx, ny = dx / JOY_MAX, dy / JOY_MAX
+    m = math.hypot(nx, ny)
+    if m > 1.0:
+        nx, ny = nx / m, ny / m
+    return nx, ny
 
 
 def render_drive(v):
@@ -412,16 +418,35 @@ def render_drive(v):
     center_text(d, 120, 87, tag, font(9), tcol)
 
     press = getattr(v, "press", None)
-    for name, box in DPAD.items():
-        on = press == name
-        fill = (46, 60, 82) if on else (28, 38, 52)
-        edge = ACCENT if on else CARD_EDGE
-        pill(d, box, fill, outline=edge, radius=12, width=2 if on else 1)
-        if name == "stop":
-            center_text(d, (box[0] + box[2]) / 2, (box[1] + box[3]) / 2, "停",
-                        font(20), RED if not on else (255, 200, 200))
-        else:
-            _arrow(d, box, name, ACCENT if on else TEXT)
+    jx = float(getattr(v, "jx", 0.0))
+    jy = float(getattr(v, "jy", 0.0))
+    joy = bool(getattr(v, "joy", False))
+    cx, cy = JOY_C
+
+    # 底盘 + 内圈 + 四向刻度
+    d.ellipse((cx - JOY_R, cy - JOY_R, cx + JOY_R, cy + JOY_R),
+              fill=(22, 30, 42), outline=(46, 60, 82), width=2)
+    d.ellipse((cx - JOY_R + 12, cy - JOY_R + 12, cx + JOY_R - 12, cy + JOY_R - 12),
+              outline=(36, 48, 64), width=1)
+    for gx, gy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+        d.line((cx + gx * (JOY_R - 6), cy + gy * (JOY_R - 6),
+                cx + gx * (JOY_R - 15), cy + gy * (JOY_R - 15)),
+               fill=(58, 74, 98), width=2)
+
+    # 摇杆头：跟着手指走，松手自动回中
+    kx, ky = cx + jx * JOY_MAX, cy + jy * JOY_MAX
+    d.ellipse((kx - JOY_KNOB, ky - JOY_KNOB, kx + JOY_KNOB, ky + JOY_KNOB),
+              fill=(64, 108, 156) if joy else (34, 46, 62),
+              outline=ACCENT if joy else (60, 76, 100), width=2)
+    if not joy:
+        center_text(d, kx, ky, "推", font(11), (118, 136, 160))
+
+    # 停车键
+    on = press == "stop"
+    pill(d, BTN_HALT, (72, 34, 40) if on else (34, 26, 32),
+         outline=RED if on else RED_D, radius=14, width=2 if on else 1)
+    center_text(d, (BTN_HALT[0] + BTN_HALT[2]) / 2, (BTN_HALT[1] + BTN_HALT[3]) / 2,
+                "停", font(18), (255, 200, 200) if on else RED)
 
     # 速度档
     for box, sign in ((SPEED_MINUS, "-"), (SPEED_PLUS, "+")):
@@ -432,15 +457,17 @@ def render_drive(v):
     center_text(d, 120, 255, "速度", font(9), MUTED)
     center_text(d, 120, 267, getattr(v, "spd", "1.4"), font(16), ACCENT)
 
-    center_text(d, 120, 300, "按住方向键行驶 · 松手即停", font(9), (88, 102, 122))
+    center_text(d, 120, 300, "推住摇杆行驶 · 松手即停", font(9), (88, 102, 122))
     center_text(d, 120, 311, getattr(v, "hint", ""), font(9), ACCENT)
     return img
 
 
 def hit_drive(x, y):
-    for name, box in DPAD.items():
-        if inside(box, x, y):
-            return name
+    if inside(BTN_HALT, x, y):
+        return "stop"
+    dx, dy = x - JOY_C[0], y - JOY_C[1]
+    if dx * dx + dy * dy <= (JOY_R + 12) ** 2:
+        return "joy"
     if inside(SPEED_MINUS, x, y):
         return "slower"
     if inside(SPEED_PLUS, x, y):

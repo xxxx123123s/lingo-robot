@@ -1454,70 +1454,146 @@ class EnvApp(App):
 
 # ================================================================ 遥控页
 class DriveApp(App):
+    """遥控页：虚拟摇杆，下发的是和手机 APP 一模一样的 [joystick] 包。
+
+    为什么不用 [go]/[turn]：那套是给语音和示教用的「精确语义」——
+    [turn,90] 是航向闭环、转到位自己收手，天生按不出「按住一直转、边走边转」。
+    手机上那种手感来自摇杆：LV 给速度、RH 给差速，一个拇指同时给两个量，
+    松手一起归零。这里复制同一套协议，所以两边行为一致，不用再维护第二套手感。
+
+    另外这块屏是单点触摸，十字键连「上+左」都按不出来，摇杆是唯一能
+    在一个触点里同时表达速度与转向的形状。
+    """
+
     key = "drive"
     title = "遥控"
+
+    JOY_DEAD = 0.10        # 摇杆死区：归一化幅度小于它当中立，滤掉手指微抖
+    JOY_HZ = 10.0          # 下发频率。必须持续发 —— 车端摇杆模式看门狗是 500ms，
+                           # 手指按住不动（没有 move 事件）时也要靠这条定时包喂住
+    HOLD_MAX = 12.0        # 连续推的兜底：万一抬起事件丢了，车不能一直跑
 
     def __init__(self, hub):
         super().__init__(hub)
         self.press = None
         self.speed = 1.4
+        self.turn_sign = 1.0
         self.hint = ""
         self.t_press = 0.0
+        self.jx = 0.0
+        self.jy = 0.0
+        self.joy_on = False
+        self._t_send = 0.0
+        self._last = (0, 0)          # 上一次真正发出去的 (LV, RH)，用来判重
+        self.down_xy = None
 
     def enter(self):
         self.hub.cars.ensure()
-        self.speed = float(self.hub.cars.cfg.get("speed", 1.4))
+        cfg = self.hub.cars.cfg or {}
+        self.speed = float(cfg.get("speed", 1.4))
+        # 转向符号单独可调，实车标定用，不用改代码也不用重烧：
+        #   第一次推右，如果车往左转，把 car.json 里的 "joy_turn_sign" 改成 -1，
+        #   离开遥控页再点回来就生效（enter() 会重读配置）。
+        self.turn_sign = float(cfg.get("joy_turn_sign", 1.0))
         self.hint = ""
+        self.jx = self.jy = 0.0
+        self.joy_on = False
 
     def leave(self):
-        self.hub.cars.send("[stop]")
+        self._halt("")
+
+    def _halt(self, hint=""):
+        self.joy_on = False
+        self.jx = self.jy = 0.0
         self.press = None
-        self.hint = ""
+        try:
+            self.hub.cars.send("[joystick,0,0,0,0]")   # 先发一包回中：触发车端
+                                                       # 「松杆」边沿，它会顺手清掉三个积分
+            self.hub.cars.send("[stop]")
+        except Exception:                              # noqa: BLE001
+            pass
+        if hint:
+            self.hint = hint
+
+    def _dead(self):
+        if abs(self.jx) < self.JOY_DEAD:
+            self.jx = 0.0
+        if abs(self.jy) < self.JOY_DEAD:
+            self.jy = 0.0
+
+    def _cmd(self):
+        """当前摇杆量 → 车端协议的两个整数。
+
+        车端把 LV 除以 25 当目标速度（圈/秒）、把 RH 除以 5 当差速目标，
+        所以这里乘回去：满推 = 速度档的值，左右满推 = ±100。
+        """
+        lv = int(round(-self.jy * self.speed * 25.0))
+        rh = int(round(self.jx * 100.0 * self.turn_sign))
+        return max(-100, min(100, lv)), max(-100, min(100, rh))
+
+    def _emit(self, force=False, min_gap=0.0):
+        now = time.monotonic()
+        if not force and now - self._t_send < min_gap:
+            return
+        self._t_send = now
+        lv, rh = self._cmd()
+        self._last = (lv, rh)
+        self.hub.cars.send(f"[joystick,0,{lv},0,{rh}]")
+
+    def on_move(self, x, y):
+        if not self.joy_on:
+            return
+        self.jx, self.jy = hubui.joy_norm(x, y)
+        self._dead()
+        # 拖动时只要指令变了就立刻发（最快 20Hz），否则摇杆会有一拍黏滞感；
+        # 但发得太密会挤占 9600 波特的带宽（遥测还要 10Hz），所以限 50ms 一次。
+        if self._cmd() != self._last:
+            self._emit(min_gap=0.05)
 
     def tick(self, now):
-        """按住行驶的超时兜底：万一抬起事件丢了（触摸屏偶发），车不能一直跑"""
-        if self.press in ("up", "down") and now - self.t_press > 6.0:
-            self.hub.cars.send("[stop]")
-            self.press = None
-            self.hint = "连续走了 6 秒，已自动停车"
-
-    def hit(self, x, y):
-        return hubui.hit_drive(x, y)
+        if not self.joy_on:
+            return
+        if now - self.t_press > self.HOLD_MAX:
+            self._halt(f"连续推了 {self.HOLD_MAX:.0f} 秒，已自动停车，需重新推")
+            return
+        # 手指按住不动时没有 move 事件，仍要按 10Hz 续命 ——
+        # 车端摇杆看门狗是 500ms，断包就停车
+        self._emit(min_gap=1.0 / self.JOY_HZ)
 
     def on_down(self, region):
         self.press = region
         self.t_press = time.monotonic()
         cars = self.hub.cars
-        if cars.link is None:
-            self.hint = "车没连上，先给车上电"
+
+        if region == "stop":
+            self._halt("已停车")
             return
-        if region == "up":
-            cars.send(f"[go,{self.speed:.2f},0]")
-            self.hint = "行驶中 · 松手停车"
-        elif region == "down":
-            cars.send(f"[go,{-self.speed:.2f},0]")
-            self.hint = "倒车中 · 松手停车"
-        elif region == "left":
-            cars.send("[turn,-90]")
-            self.hint = "左转 90° · 车自己转到位"
-        elif region == "right":
-            cars.send("[turn,90]")
-            self.hint = "右转 90° · 车自己转到位"
-        elif region == "stop":
-            cars.send("[stop]")
-            self.hint = "已停车"
-        elif region in ("faster", "slower"):
+        if region in ("faster", "slower"):
             step = float(cars.cfg.get("speed_step", 0.4))
             lo = float(cars.cfg.get("speed_min", 0.5))
             hi = float(cars.cfg.get("speed_max", 3.2))
             self.speed = max(lo, min(hi, self.speed + (step if region == "faster" else -step)))
-            self.hint = f"速度 {self.speed:.1f}"
+            self.hint = f"满推 {self.speed:.1f} 圈/秒"
+            if self.joy_on:
+                self._emit(force=True)
+            return
+        if cars.link is None:
+            self.hint = "车没连上，先给车上电"
+            return
+        if region == "joy":
+            self.joy_on = True
+            xy = self.down_xy or hubui.JOY_C
+            self.jx, self.jy = hubui.joy_norm(xy[0], xy[1])
+            self._dead()
+            self._emit(force=True)
+            self.hint = "推住行驶 · 松手即停"
+
+    def hit(self, x, y):
+        return hubui.hit_drive(x, y)
 
     def on_up(self, region, x, y, dur):
-        self.press = None
-        if region in ("up", "down"):
-            self.hub.cars.send("[stop]")
-            self.hint = "已停"
+        if self.joy_on:
+            self._halt("已停")
 
     def _tel(self):
         return self.hub.cars.snap()
@@ -1530,13 +1606,15 @@ class DriveApp(App):
             car_lost=cars.status == "lost",
             angle=f"{s['angle']:+.1f}°", speed=f"{s['speed']:+.2f}",
             yaw=f"{s['yaw']:+.0f}°", flags=s.get("flags", 0),
-            spd=f"{self.speed:.1f}", press=self.press, hint=self.hint))
+            spd=f"{self.speed:.1f}", press=self.press, hint=self.hint,
+            jx=self.jx, jy=self.jy, joy=self.joy_on))
 
     def sig(self, now):
         s = self._tel()
         return (int(s["angle"] * 10), int(s["speed"] * 100), int(s["yaw"]),
                 s.get("flags", 0), self.hub.cars.status, f"{self.speed:.1f}",
-                self.press, self.hint)
+                self.press, self.hint,
+                int(self.jx * 20), int(self.jy * 20), self.joy_on)
 
 
 # ================================================================ 语音控车页
@@ -2117,6 +2195,10 @@ class Hub:
                         press = "@back"
                     else:
                         press = app.hit(ev.x, ev.y)
+                    # on_down 只拿到"哪个区域"，拿不到坐标。摇杆需要知道手指落在
+                    # 盘面哪个位置（按在边缘就该立刻给大的推杆量），所以在这里
+                    # 先把坐标挂到 app 上，需要的人自己取，不用的页面无视即可。
+                    app.down_xy = (ev.x, ev.y)
                     app.on_down(press)
                 elif ev.kind == "move":
                     app.on_move(ev.x, ev.y)

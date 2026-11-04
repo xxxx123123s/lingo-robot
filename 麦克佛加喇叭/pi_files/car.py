@@ -60,6 +60,7 @@ DEFAULT_CFG = {
     "speed_step": 0.4,
     "speed_min": 0.5,
     "speed_max": 3.2,
+    "joy_turn_sign": 1.0,     # 遥控页摇杆的左右符号：推右却往左转就改成 -1.0
     "drive_seconds": 2.0,     # 说"前进"默认走多久
     "hold_max": 8.0,          # 说"一直走"最多走多久，安全上限
     "turn_timeout": 12.0,     # 等车转完的最长时间。360° 约 6.5 秒，转得更大会自动放宽
