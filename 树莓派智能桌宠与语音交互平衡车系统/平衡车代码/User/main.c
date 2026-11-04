@@ -84,16 +84,19 @@
   1. 转过头/转不到位  → 调 YAW_OUTMAX（上限，决定最快转多快）和 YAW_KD（刹车力度）
   2. 转到位了但差 5~10° 不动 → 静摩擦。加大 YAW_KI，或把 YAW_I_ZONE 放宽
   3. 方向反了（说右转往左转）→ 先看遥测航向在右转时变大还是变小，
-     变小就改 YAW_GZ_SIGN 为 -1.0f；数值到不了目标就改 YAW_DIR
+     变小就说明模块 Z 轴朝下，把 YAW_GZ_SIGN 改成 +1.0f（默认 -1 对应 Z 朝上）
 --------------------------------------------------------*/
 #define YAW_DIR        (-1.0f)  /* 差速 PWM 的转向方向。LeftPWM=ave-dif、RightPWM=ave+dif，
                                    所以 dif>0 是左轮慢右轮快 = 左转，而"右转为正"，
                                    故取 -1。★若实测"喊右转却往左转"，把它改成 +1.0f */
-#define YAW_GZ_SIGN    (+1.0f)  /* 陀螺 Z 轴的符号：决定"Yaw 增大"是不是车头向右转。
-                                   MPU6050 装在车上，GZ 正方向取决于模块朝向。
-                                   ★判定：手握车保持水平，慢慢把它【向右】转 90°，
-                                     看遥测第 4 个字段（航向）是变大还是变小。
-                                     变大 → 保持 +1；变小 → 改成 -1.0f。
+#define YAW_GZ_SIGN    (-1.0f)  /* 陀螺 Z 轴的符号：决定"Yaw 增大"是不是车头向右转。
+                                   MPU6050 平贴车体、Z 轴朝上时，按右手定则
+                                   【俯视逆时针 = 左转 = GZ 为正】，所以要让
+                                   "Yaw 增大 = 右转"必须取 -1。
+                                   ★只有模块装反（Z 朝下）时才反过来写成 +1。
+                                   判定方法：手握车保持水平，慢慢把它【向右】转 90°，
+                                     看遥测航向是变大还是变小。
+                                     变大 → 保持 -1（默认，Z 朝上）；变小 → 改 +1（模块装反了）。
                                    这个符号错了不会失控（方向自检会兜住"转不到位"），
                                    但会出现"说右转、实际左转"。*/
 #define YAW_TIMEOUT_MS  12000u  /* 单次转向最长 12 秒，超时强制收手（防符号错时原地转圈）*/
@@ -203,7 +206,8 @@ float    YawInt = 0;         /* 转向积分项（PWM），退出转向时清零
 float    YawStart = 0;       /* 本段转向开始时的航向，用于"方向反了"自检 */
 uint32_t YawTick = 0;        /* 本段转向开始时刻 */
 float    YawDir = YAW_DIR;   /* 运行时可翻转的方向系数，见探路逻辑 */
-uint8_t  YawProbed = 0;      /* 已做过方向自检 */
+uint8_t  YawProbed = 0;      /* 本轮转向已做过方向自检 */
+uint8_t  YawDirLock = 0;     /* ★自检翻转过一次就锁死，不再翻（见下） */
 
 /*运动指令来源。为什么必须区分：
   摇杆是"持续发送、松开就没有"（500ms 收不到就停），
@@ -775,15 +779,20 @@ int main(void)
 		if (TelFlag)
 		{
 			uint8_t fl = 0;
+			int yaw_disp;
 			TelFlag = 0;
 			if (RunFlag) fl |= 1;
 			if (YawMode) fl |= 2;
 			if (Fallen)  fl |= 4;
 			if (GzBad)   fl |= 8;
+			/*航向是累加的，转几圈就会跑到 ±720 去。上报前折回 0~359：
+			  屏幕上"航向 448°"没法看，演示时也没法讲。C 里负数取模还是负数，要补一次*/
+			yaw_disp = (int)Yaw % 360;
+			if (yaw_disp < 0) yaw_disp += 360;
 			BlueSerial_Printf("[s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d]",
 				(int)(Angle * 10.0f),
 				(int)(aveSpeed * 100.0f),
-				(int)Yaw,
+				yaw_disp,
 				(int)fl,
 				(int)(difSpeed * 100.0f),
 				(int)difPWM,
@@ -971,15 +980,24 @@ void TIM1_UP_IRQHandler(void)
 
 		/*---- 方向自检：给出去 0.8 秒后，看航向有没有朝目标方向动 ----
 		  轮子左右装反、GZ 装反、车身坐标系和我推的不一样，都会让闭环变成
-		  "越转越远"。这里只在确实转反了（动了 3° 以上且方向相反）时翻一次。*/
+		  "越转越远"。
+
+		  ★★只许翻一次，翻过就上锁（YawDirLock）★★
+		  原来每次 [turn] 都把 YawProbed 清零、自检照跑，于是 GZ 符号不对时
+		  会出现"自洽的错误平衡"：翻一次 → 闭环收敛了，但方向是反的；
+		  下一次转向又翻回去 → 方向又对了。表现出来就是
+		  **左一下右一下，同一条命令两次结果相反**，根本没法用。
+		  上锁之后：要么一次翻对，要么一直错（稳定，能一眼看出来是符号问题），
+		  绝不会来回抖。*/
 		if (!YawProbed && dt > 800u)
 		{
 			float moved = Yaw - YawStart;
 			float want  = YawTarget - YawStart;
-			if (moved * want < 0.0f && FABS(moved) > 3.0f)
+			if (!YawDirLock && moved * want < 0.0f && FABS(moved) > 3.0f)
 			{
 				YawDir = -YawDir;
 				YawInt = 0.0f;
+				YawDirLock = 1;			/*从此认定这个方向，后续转向不再试探*/
 			}
 			YawProbed = 1;
 		}

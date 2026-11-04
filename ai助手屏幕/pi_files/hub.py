@@ -462,6 +462,7 @@ class CarCtl:
         if now - self._last_check < 0.5:
             return
         self._last_check = now
+        self._dump_tel()
         self._poll_vision()
         self._poll_carcmd()
         if self.status == "fail":
@@ -483,6 +484,22 @@ class CarCtl:
         elif self.status == "ok":
             print(f"[车] 遥测断了 {age:.1f}s，标记为掉线")
             self.status = "lost"
+
+    def _dump_tel(self):
+        """把最新遥测落到 /tmp/car.tel，一行四个数：倾角,速度,航向,状态位。
+
+        为什么要这个：调方向符号时隔着屏幕问「你点右它往哪转」太慢，
+        而且人眼容易看成想要的结果。落盘之后可以直接从 PC 侧 ssh 读数，
+        "手拿车往右转 90°，航向是变大还是变小"这种问题一秒就有客观答案。
+        /tmp 是内存盘，0.5 秒写一行几十字节，开销可以忽略。"""
+        if self.link is None:
+            return
+        try:
+            s = self.snap()
+            with open("/tmp/car.tel", "w", encoding="utf-8") as f:
+                f.write(f"{s['angle']:.2f},{s['speed']:.3f},{s['yaw']:.1f},{s.get('flags', 0)}\n")
+        except Exception:                                  # noqa: BLE001
+            pass
 
     def _poll_carcmd(self):
         """调参用的原始指令通道：/tmp/car.cmd 里每行一条，原样发给车。
